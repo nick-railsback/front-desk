@@ -7,6 +7,21 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: frontdesk
+          POSTGRES_PASSWORD: frontdesk
+          POSTGRES_DB: frontdesk
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U frontdesk"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://frontdesk:frontdesk@localhost:5432/frontdesk
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

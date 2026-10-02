@@ -38,11 +38,11 @@ app/                    Next.js (App Router), TypeScript
     render.ts           reply view model, fixed copy selection
     today.ts            Today card + office-hours expectation (no model)
     gaps.ts             pure gap matching
-    types.ts            Reply, Outcome, Reason, ModelOutput (Zod)
+    types.ts            Section, Reply, Outcome, Reason as plain types; Zod (ModelOutput) arrives in chunk 05
     copy.ts             every user-facing string (A8)
   src/model/            adapters: bedrock.ts, fixture.ts, scripted.ts
-  src/db/               Drizzle schema, migrations, scoped.ts (all tenant-scoped access)
-  src/seed/             seed(now) → snapshot + history; relative dates
+  src/db/               schema.ts, migrations/ (generated), sandbox.ts (all sandbox-scoped access, via forSandbox)
+  src/seed/             seed(now): index.ts (the Seed type), center.ts, calendar.ts, sections.ts, history.ts, dates.ts
   src/app/              routes: / (parent), /operator, /api/*
   tests/unit/           vitest, no network
   tests/e2e/            Playwright + axe, fixture model
@@ -238,47 +238,59 @@ This works because the app is a long-lived Node process on one box (decision D3)
 
 ## 5. Data model (Drizzle, Postgres 16)
 
-Every table except `usage_global` carries `sandbox_id`. All access goes through `src/db/scoped.ts`, whose functions take `sandboxId` as their first argument. No other module imports the raw Drizzle client. Row-level security is designed for, not built (PRD section 12).
+Every table except `usage_global` carries `sandbox_id`, and every table holding seeded content keys on `(sandbox_id, id)`: content IDs come from the seed and repeat across sandboxes. All access goes through `src/db/sandbox.ts`: `forSandbox(sandboxId)` returns the only read and write path, and every statement inside it filters on, or inserts, that sandbox ID. No other module imports `pg` or the Drizzle client. Row-level security is designed for, not built (PRD section 12).
+
+Built in chunk 03 (`src/db/schema.ts`, one generated migration). Every `sandbox_id` references `sandboxes.id` on delete cascade.
+
+| Table | Columns | Primary key |
+|---|---|---|
+| `sandboxes` | id (uuid), created_at, last_seen_at | id |
+| `structured_data` | sandbox_id, content (jsonb: the whole `structured` object of 5.1) | sandbox_id |
+| `snapshots` | sandbox_id, version, sections (jsonb), published_at | (sandbox_id, version) |
+| `drafts` | sandbox_id, sections (jsonb), updated_at | sandbox_id |
+| `turns` | One parent message and its reply (columns listed below) | (sandbox_id, id) |
+| `gaps` | sandbox_id, id, label, status | (sandbox_id, id) |
+| `gap_members` | sandbox_id, gap_id, turn_id, with composite foreign keys to `gaps` and `turns` | (sandbox_id, gap_id, turn_id) |
+
+Planned for later chunks:
 
 | Table | Purpose |
 |---|---|
-| `sandboxes` | id (uuid), created_at, last_seen_at |
-| `snapshots` | sandbox_id, version, published_at, content (jsonb, validated by `SnapshotSchema`) |
-| `drafts` | sandbox_id (pk), content (jsonb), updated_at |
-| `turns` | One parent message and its reply (fields listed below) |
-| `gaps` | id, sandbox_id, label, status (open, resolved), created_at, updated_at |
-| `gap_members` | gap_id, turn_id |
 | `replays` | id, sandbox_id, snapshot_version, status, results (jsonb), created_at |
 | `usage_sandbox` | sandbox_id, bucket (minute or day), count; incremented atomically with `UPDATE ... RETURNING` |
 | `usage_global` | day, count |
 
-`turns` columns, matching the T13 logging fields:
-- id, sandbox_id, conversation_id, created_at;
-- message, outcome, reason, model_status, floors_fired (jsonb);
-- answer_text, citations (jsonb), snapshot_version;
+`turns` columns as of chunk 03: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for real messages). Chunk 05 adds the rest of the T13 logging fields:
+- conversation_id;
+- model_status, floors_fired (jsonb);
 - language, topic;
 - latency_ms, input_tokens, cached_input_tokens, output_tokens;
-- sent_to_front_desk (bool);
-- source (`live` or `seed`).
+- sent_to_front_desk (bool).
 
-**Why this split:** content is a versioned document, so each snapshot is one jsonb value. Traffic (turns, gaps, replays) is relational because every operator view is a join or a group-by.
+**Why this split:** sections are a versioned document, so each snapshot is one jsonb value. Structured data is one jsonb document because only sections are ever edited and nothing queries inside it. Traffic (turns, gaps, replays) is relational because every operator view is a join or a group-by.
 
-### 5.1 Snapshot schema (sketch)
+### 5.1 Seed shape
+
+`seed(now)` in `src/seed/index.ts` returns the `Seed` type below, and `forSandbox(id).read()` returns the same shape. Dates are `YYYY-MM-DD` in America/Denver; instants are `toISOString()` strings. Structured data sits outside the snapshot; snapshots hold sections only.
 
 ```ts
-Snapshot = {
-  center:   { name, timezone, phone, email, officeHours: WeeklyHours },
-  programs: [{ id, name, ages, hours: WeeklyHours, extendedCare?: Hours, weeklyTuition?: number, note? }],
-  fees:     { registration: number },
-  sections: [{ id, title, body, visibility: "parent" | "staff", updatedAt }],   // policy only
-  calendar: [{ date, kind: "closure" | "event", title, startTime?, programs? }],
-  holidays: { closed: string[] },   // named federal holidays the center closes for
-  menus:    [{ date, breakfast, backupLunch, snack }],
-  alerts:   [{ id, title, body, startsAt, expiresAt }]
+Seed = {
+  structured: {
+    center:   { name, city, timezone, phone, email, director, officeHours },  // strings
+    programs: [{ id, name, ages, hours, weeklyTuition }],                     // strings, as the center states them
+    registrationFee: string,
+    calendar: [{ id, date, name, status: "open" | "closed", time: string | null }],  // one entry per date
+    menus:    [{ date, items: string[] }],
+    alerts:   [{ id, text, startsAt, expiresAt }]
+  },
+  snapshots: [{ version, sections: Section[] }],   // Section: { id, title, visibility: "parent" | "staff", updatedOn, text }
+  draft:     { sections: Section[] },
+  questions: [{ id, text, askedAt, reply: { text, outcome, reason, snapshotVersion, citations: [{ sectionId }] } }],
+  gaps:      [{ id, label, status: "open", questionIds: string[] }]
 }
 ```
 
-Data sections are rendered from these fields at assemble time. Only `sections` is editable in the operator view.
+Data sections are rendered from `structured` at assemble time. Only sections are editable in the operator view.
 
 ## 6. Model adapters
 
@@ -293,7 +305,7 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 ## 7. Evals and tests
 
 - **Unit tests (vitest).** Cover every function in `core/`. Grounding gets table-driven tests for each value type and each equivalent form. Floors get positive cases, negative cases, and the non-trigger words.
-- **DB tests.** Run against a Postgres service container, covering `scoped.ts` isolation: data written in sandbox A is never visible from sandbox B.
+- **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of sandbox data. They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
 - **e2e tests (Playwright).** Use the fixture model and run axe on each view state (PRD A1).
 - **Eval runner (`evals/run.ts`).**
   1. Load and Zod-validate the cases.
@@ -346,7 +358,8 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
   1. `pnpm install --frozen-lockfile`
   2. gitleaks over full history (pinned binary)
   3. `pnpm test`: the repo tests plus the app and infra unit tests
-  - Typecheck, lint, DB tests (Postgres service container) and Playwright with axe arrive with the chunks that need them.
+  - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests.
+  - Typecheck, lint, and Playwright with axe arrive with the chunks that need them.
 - **`evals.yml`** runs on PRs touching `app/src/core/**`, `app/src/model/**`, `evals/**`, or model config; on main; and on manual dispatch.
   - Assumes `fd-eval` via OIDC and runs the evals.
   - Writes the summary to `$GITHUB_STEP_SUMMARY` and uploads the JSON report as an artifact.
@@ -376,9 +389,9 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 | Model API key | None exists. The instance role and the OIDC roles hold short-lived credentials |
 | Local AWS credentials | IAM Identity Center profiles only. No IAM users with access keys. Root has MFA and no keys |
 | Secret scanning | `lefthook` pre-commit runs gitleaks on staged changes; CI runs gitleaks on full history. Don't rely on GitHub's own scanning for a private personal repo |
-| Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook: shell writes into `evals/cases/` are caught by `oracle-guard.yml` in CI and by the frozen oracle's hash pin. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. The local env template is named `env.example`, without a leading dot, so the deny rules don't hide it |
-| Supply chain | pnpm 11.9.0, which doesn't run dependency install scripts unless allowed in `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 ignores `onlyBuiltDependencies`). `minimumReleaseAge: 1440` in the same file. Lockfile committed. Actions pinned by SHA |
-| Abuse and cost | Rate limits checked in `scoped.ts` before any model call (PRD S6); `maxTokens` 400; the global daily cap; the budget alert |
+| Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook: shell writes into `evals/cases/` are caught by `oracle-guard.yml` in CI and by the frozen oracle's hash pin. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. A local env template, if one is added, is named `env.example`, without a leading dot, so the deny rules don't hide it. None exists yet: the only local variable, `DATABASE_URL`, is documented in `infra/compose.dev.yml` |
+| Supply chain | pnpm 11.9.0, which doesn't run dependency install scripts unless allowed in `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 ignores `onlyBuiltDependencies`). `allowBuilds` allows `lefthook` and denies `esbuild` (`esbuild: false`): `drizzle-kit` depends on it, pnpm 11 refuses an install whose build scripts are neither allowed nor denied, and `drizzle-kit generate` works without its install script. `minimumReleaseAge: 1440` in the same file. Lockfile committed. Actions pinned by SHA |
+| Abuse and cost | Rate limits checked in `src/db/sandbox.ts` before any model call (PRD S6); `maxTokens` 400; the global daily cap; the budget alert |
 | Errors | Next.js error boundaries and API routes return generic messages; details go to logs only |
 | Headers and CSP | CloudFront response-headers policy (section 8). Its CSP is `override: false`, a fallback that the app's own CSP replaces once chunk 08 sends one. A strict `script-src 'self'` needs nonces in the App Router via middleware; implement that, or document the exact deviation in chunk 08 |
 | Data | Fictional only (PRD S9). No real names or numbers from source handbooks |
@@ -393,6 +406,8 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 - `aws-cdk-lib`, `constructs`, `lefthook`;
 - `aws-cdk` (the CLI, an `infra` dev dependency): how Nick runs `cdk bootstrap` and `cdk deploy` through pnpm, pinned in the lockfile, with no global install;
 - `@types/react`, `@types/node` (`app` dev dependencies): `next build` type-checks TypeScript and requires them; types only, nothing ships at runtime.
+- `@types/pg` (`app` dev dependency, added in chunk 03): `pg` ships no types and `next build` type-checks `src/db/` under `strict`; types only.
+- `date-holidays` stays allowlisted but unused: the seed computes the center's holidays from fixed-date and nth-weekday rules in `src/seed/calendar.ts`.
 - The gitleaks binary is pinned in CI.
 
 **Anything else** needs a one-sentence reason in the plan, approved at the plan gate.
