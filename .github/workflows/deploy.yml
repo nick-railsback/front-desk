@@ -1,0 +1,67 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+      IMAGE: ${{ vars.ECR_REPOSITORY_URI }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Build and push the app image
+        run: |
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${IMAGE%%/*}"
+          docker build -f app/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+      - name: Roll out on the instance
+        run: |
+          registry="${IMAGE%%/*}"
+          compose_b64="$(base64 -w0 infra/compose.prod.yml)"
+          jq -n --arg image "$IMAGE" --arg registry "$registry" --arg compose "$compose_b64" '{commands: [
+            "set -eu",
+            "mkdir -p /opt/frontdesk",
+            "echo \($compose) | base64 -d > /opt/frontdesk/compose.prod.yml",
+            "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \($registry)",
+            "APP_IMAGE=\($image) docker compose -f /opt/frontdesk/compose.prod.yml pull",
+            "APP_IMAGE=\($image) docker compose -f /opt/frontdesk/compose.prod.yml up -d --remove-orphans"
+          ]}' > params.json
+          id="$(aws ssm send-command --document-name AWS-RunShellScript \
+            --targets Key=tag:app,Values=front-desk \
+            --parameters file://params.json \
+            --query Command.CommandId --output text)"
+          echo "command $id"
+          for _ in $(seq 60); do
+            state="$(aws ssm list-command-invocations --command-id "$id" \
+              --query 'CommandInvocations[0].Status' --output text)"
+            case "$state" in
+              Success) exit 0 ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm list-command-invocations --command-id "$id" --details
+                exit 1 ;;
+            esac
+            sleep 5
+          done
+          echo "rollout did not finish within 5 minutes (last status: $state)"
+          aws ssm list-command-invocations --command-id "$id" --details
+          exit 1
+      - name: Check /api/health through the CDN
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: curl --fail --silent --show-error --retry 20 --retry-delay 6 --retry-all-errors "$APP_URL/api/health"

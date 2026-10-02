@@ -2,7 +2,9 @@
   "name": "@front-desk/infra",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
+    "cdk": "cdk",
     "test": "vitest run"
   },
   "devDependencies": {
