@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./evals/cases/**)",
+      "Write(./evals/cases/**)",
+      "Bash(cdk deploy:*)",
+      "Bash(aws ssm send-command:*)"
+    ]
+  }
+}

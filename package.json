@@ -1,0 +1,14 @@
+{
+  "name": "front-desk",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test 'tests/repo/**/*.test.mjs'"
+  },
+  "devDependencies": {
+    "lefthook": "2.1.15"
+  }
+}

@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# chunk-check.sh pins each frozen test file by SHA-256 in state.json; a test
+# file named for secrets makes that hash look like an API key.
+[[allowlists]]
+description = "SHA-256 test pins in feature-chunker state files"
+paths = ['''docs/chunks/.*/state\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"tests/[^"]+": "[0-9a-f]{64}",?$''']
+condition = "AND"
