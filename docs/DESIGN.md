@@ -362,6 +362,7 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 - **Workflow defaults:**
   - `permissions: contents: read` at the top of every workflow; `id-token: write` only on the jobs that assume a role.
   - Every third-party action is pinned to a full commit SHA, with the version in a comment.
+  - The repo's Actions policy allows only GitHub-owned actions plus a named list: `pnpm/action-setup@*`, and `aws-actions/configure-aws-credentials` at the exact SHA `deploy.yml` pins. Bumping that pin means updating the allowlist too, or `deploy.yml` fails at startup before any step runs.
   - `pull_request_target` is never used.
 - **OIDC trust:**
   - `fd-eval` trusts `repo:<owner>/<repo>:pull_request` and `repo:<owner>/<repo>:ref:refs/heads/main`. It can only invoke the model.
