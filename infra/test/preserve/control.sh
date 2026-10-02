@@ -16,6 +16,7 @@
 #   release-age       pnpm-workspace.yaml loses minimumReleaseAge
 #   lockfile-tracked  pnpm-lock.yaml is removed from the git index
 #   clean-install     a package.json names a dependency the lockfile lacks
+#   cases-deny        .claude/settings.json stops denying edits under evals/cases/
 set -euo pipefail
 
 property="${1:?usage: control.sh <property>}"
@@ -34,6 +35,7 @@ case "$property" in
   release-age)      guard=tests/repo/pnpm-policy.test.mjs ;;
   lockfile-tracked) guard=tests/repo/lockfile.test.mjs ;;
   clean-install)    guard=tests/repo/clean-clone.test.mjs ;;
+  cases-deny)       guard=tests/repo/claude-settings.test.mjs ;;
   *) echo "unknown property: $property" >&2; exit 2 ;;
 esac
 
@@ -61,8 +63,11 @@ case "$property" in
       fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
     ' "$work/app/package.json"
     ;;
+  cases-deny)
+    sed -i.bak '/"Edit(\.\/evals\/cases\/\*\*)",/d' "$work/.claude/settings.json"
+    ;;
 esac
-rm -f "$work"/.github/workflows/*.bak "$work"/*.bak
+rm -f "$work"/.github/workflows/*.bak "$work"/*.bak "$work"/.claude/*.bak
 # Restaging would undo the lockfile-tracked removal; the others are file edits.
 if [ "$property" != lockfile-tracked ]; then
   git -C "$work" add -A
