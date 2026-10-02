@@ -367,6 +367,7 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 - **OIDC trust:**
   - `fd-eval` trusts `repo:<owner>/<repo>:pull_request` and `repo:<owner>/<repo>:ref:refs/heads/main`. It can only invoke the model.
   - `fd-deploy` trusts only `repo:<owner>/<repo>:environment:production`. It can push to ECR and send SSM commands to the instance by tag.
+  - GitHub signs this repo's tokens with the **immutable subject**, which names the owner and repository by ID (`repo:nick-railsback@176838666/front-desk@1401949259:...`), and the repo can't switch back to the name form. Each role therefore trusts both forms of each subject. The IDs live in `infra/cdk.json` context (`githubRepoImmutable`). The name form is kept because chunk 02's frozen tests assert it; GitHub no longer sends it, so it is dead weight a later chunk can drop along with those tests.
 
 ## 10. Security mechanics
 
