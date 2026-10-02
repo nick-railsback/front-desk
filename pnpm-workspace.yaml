@@ -1,0 +1,7 @@
+packages:
+  - app
+  - evals
+  - infra
+minimumReleaseAge: 1440
+allowBuilds:
+  lefthook: true
