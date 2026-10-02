@@ -37,6 +37,7 @@ export class FrontDeskStack extends Stack {
     const foundationModelId: string = this.node.getContext('foundationModelId');
     const modelRegions: string[] = this.node.getContext('modelRegions');
     const githubRepo: string = this.node.getContext('githubRepo');
+    const githubRepoImmutable: string = this.node.getContext('githubRepoImmutable');
     const cloudFrontPrefixListId: string = this.node.getContext('cloudFrontPrefixListId');
 
     // Passed at deploy time so the address never enters the repository.
@@ -168,6 +169,10 @@ export class FrontDeskStack extends Stack {
       url: `https://${GITHUB_OIDC_HOST}`,
       clientIds: ['sts.amazonaws.com'],
     });
+    // GitHub signs this repo's tokens with the immutable subject, which names
+    // the owner and repository by ID. The name form is trusted alongside it
+    // (DESIGN section 9).
+    const subjectsFor = (context: string) => [githubRepo, githubRepoImmutable].map((repo) => `repo:${repo}:${context}`);
     const githubPrincipal = (subjects: string[]) =>
       new iam.WebIdentityPrincipal(github.openIdConnectProviderArn, {
         StringEquals: {
@@ -179,7 +184,7 @@ export class FrontDeskStack extends Stack {
     // CI eval role: pull requests and main may call the one model, nothing else.
     const evalRole = new iam.Role(this, 'EvalRole', {
       roleName: 'fd-eval',
-      assumedBy: githubPrincipal([`repo:${githubRepo}:pull_request`, `repo:${githubRepo}:ref:refs/heads/main`]),
+      assumedBy: githubPrincipal([...subjectsFor('pull_request'), ...subjectsFor('ref:refs/heads/main')]),
     });
     evalRole.addToPolicy(
       new iam.PolicyStatement({
@@ -192,7 +197,7 @@ export class FrontDeskStack extends Stack {
     // runs the rollout command on the tagged host.
     const deployRole = new iam.Role(this, 'DeployRole', {
       roleName: 'fd-deploy',
-      assumedBy: githubPrincipal([`repo:${githubRepo}:environment:production`]),
+      assumedBy: githubPrincipal(subjectsFor('environment:production')),
     });
     repository.grantPullPush(deployRole);
     deployRole.addToPolicy(
