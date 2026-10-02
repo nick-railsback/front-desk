@@ -1,0 +1,26 @@
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    environment:
+      NODE_ENV: production
+      AWS_REGION: us-east-1
+      MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    env_file: /etc/frontdesk/db.env
+    depends_on:
+      - db
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /front-desk/app
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    env_file: /etc/frontdesk/db.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

@@ -52,7 +52,12 @@ evals/
   run.ts                runner: calls core answer() with the Bedrock adapter
   metrics.ts
   reports/              generated; only latest.md is committed
-infra/                  CDK app (TypeScript), one stack; compose.yml (prod), compose.dev.yml (local Postgres)
+infra/                  CDK app (TypeScript), one stack
+  bin/                  front-desk.ts, the CDK entry point
+  lib/                  front-desk-stack.ts, the stack
+  cdk.json              model, repository and prefix-list config (context)
+  compose.prod.yml      production container definition
+  compose.dev.yml       local Postgres
 docs/                   PRD.md, DESIGN.md, WALKTHROUGH.md, chunks/
 .claude/                settings.json (deny rules)
 .github/workflows/      ci.yml, evals.yml, deploy.yml, oracle-guard.yml
@@ -156,11 +161,15 @@ Because block B embeds dates relative to `now`, the cache key changes daily and 
 ### 4.5 The model call
 
 - **API:** Bedrock `ConverseCommand`, region `us-east-1`.
-- **Model ID:** the Haiku 4.5 inference profile (`us.anthropic.claude-haiku-4-5-20251001-v1:0`). Verify the ID in the console during chunk 02, and keep it in config, not code.
+- **Model ID:** the Haiku 4.5 inference profile (`us.anthropic.claude-haiku-4-5-20251001-v1:0`), verified ACTIVE in us-east-1 on 2026-10-02.
+  - It lives in config, not code, in two places: `infra/cdk.json` context (for IAM) and `infra/compose.prod.yml` (`MODEL_ID`, the app's config). Changing the model means changing both and running `cdk deploy`.
+  - The profile routes to `anthropic.claude-haiku-4-5-20251001-v1:0` in us-east-1, us-east-2 and us-west-2. Every role that invokes the model is granted exactly the profile ARN plus those three foundation-model ARNs.
 - **Tool:** one tool named `reply`, forced with `toolChoice`.
 - **Inference settings:** `temperature: 0`, `maxTokens: 400`.
 - **Timeout:** an `AbortController` at 15 s.
-- **Caching:** a `cachePoint` after block B. Confirm Haiku 4.5 caching support and the minimum cacheable length in chunk 02; if unsupported, ship without it.
+- **Caching:** a `cachePoint` after block B, if the prefix is long enough.
+  - Haiku 4.5 supports Converse `cachePoint` (checked 2026-10-02). The cached prefix must be at least 4,096 tokens; below that the call succeeds and nothing is cached.
+  - Not shipped in chunk 02, which makes no model call. Chunk 05 decides once the assembled snapshot's token count is known.
 - **No agent framework.** There is one call.
 
 `reply` tool schema, mirrored in Zod as `ModelOutput`:
@@ -301,13 +310,17 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 
 ## 8. Hosting (CDK, one stack)
 
+- **Config:** the model IDs and regions, the GitHub repository and the CloudFront prefix-list ID live in `infra/cdk.json` context. The budget alert address is a stack parameter (`AlertEmail`) passed at deploy time, so it never enters the repo.
 - **Network:** the default VPC.
 - **Instance:** one EC2 `t3.small`, Amazon Linux 2023, with a 20 GB encrypted gp3 volume.
   - x86 is deliberate: GitHub-hosted runners build amd64 images natively, with no emulation.
-- **User data:**
-  - installs Docker and the Compose plugin;
+  - IMDSv2 only, with a hop limit of 2. Containers on the Docker bridge are one hop further from the metadata service; at the default of 1 the app container gets no role credentials.
+  - An Elastic IP, so the CloudFront origin survives an instance stop and start.
+  - The AMI lookup is cached in `infra/cdk.context.json`, which is committed. A later `cdk deploy` therefore never replaces the instance (and the Postgres volume on it) because AWS published a newer AMI. The cost is that the account ID and the default VPC, subnet and AMI IDs sit in the repo.
+- **User data** (runs once, at first boot; later changes to the box go through SSM):
+  - installs Docker and the Compose plugin, pinned to v5.6.0 and checked against its published SHA-256 before use;
   - generates the Postgres password with `openssl rand` into `/etc/frontdesk/db.env` (root, mode 600). That secret exists only on the box and never travels.
-- **Compose:** `app` (image from ECR) and `db` (`postgres:16`, volume on the instance disk, no published port). The app entrypoint runs Drizzle migrations, then `next start` (standalone output).
+- **Compose** (`infra/compose.prod.yml`): `app` (image from ECR, port 80 to 3000, logs to CloudWatch) and `db` (`postgres:16`, volume on the instance disk, no published port). The app runs the Next standalone server. From chunk 03, its entrypoint runs Drizzle migrations first.
 - **Instance role:**
   - `bedrock:InvokeModel` on the Haiku inference profile ARN, plus the foundation-model ARNs it routes to;
   - ECR pull;
@@ -316,10 +329,11 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
   - Nothing else.
 - **Security group:** one inbound rule, port 80 from the CloudFront origin-facing managed prefix list. That prefix list counts heavily against the rule quota, so keep it to that single rule. No port 22; shell access is through SSM Session Manager.
 - **CloudFront:**
-  - the default `*.cloudfront.net` domain, redirecting HTTP to HTTPS;
-  - caching disabled except `/_next/static/*`;
-  - cookies forwarded;
-  - a response-headers policy carrying the PRD S11 headers.
+  - the default `*.cloudfront.net` domain, redirecting HTTP to HTTPS on every behavior;
+  - the default behavior: all methods, caching disabled, every viewer header, cookie and query string forwarded except `Host`;
+  - `/_next/static/*`: cached with the managed caching-optimized policy;
+  - one response-headers policy on both behaviors, carrying the PRD S11 headers.
+  - **How the CDN's CSP and the app's headers interact:** HSTS, nosniff, Referrer-Policy and frame-options are set with `override: true`, so the CDN always controls them. The CSP is `override: false`: if the origin sends no `Content-Security-Policy`, CloudFront adds a strict one (`script-src 'self'`, `frame-ancestors 'none'`); if the origin sends one, CloudFront passes it through untouched. Until chunk 08 the app sends none, so the strict policy applies and Next's inline bootstrap scripts are blocked, which a page with no interactivity tolerates. Chunk 08 adds a nonce-based CSP from the app, which reaches browsers with no `cdk deploy`. From then on the app's CSP is the one in force, so chunk 08's oracle must assert `frame-ancestors 'none'` and a nonce-limited `script-src` on the app's own responses.
   - **Known trade-off:** traffic from CloudFront to the origin is HTTP. It is acceptable for a demo with fictional data; production would use an ALB with TLS or CloudFront VPC origins.
 - **Budget:** an AWS Budgets alert at $25 forecast (PRD S8).
 - **Daily job:** deletes idle sandboxes (PRD D7). It is a cron entry in the app container calling an internal endpoint; no extra AWS service.
@@ -328,21 +342,22 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 
 ## 9. CI/CD (GitHub Actions)
 
-- **`ci.yml`** runs on every PR and on main:
+- **`ci.yml`** runs on every push (any branch) and every PR:
   1. `pnpm install --frozen-lockfile`
-  2. typecheck and lint
-  3. unit and DB tests (Postgres service container)
-  4. Playwright with axe (fixture model)
-  5. gitleaks over full history (pinned binary)
+  2. gitleaks over full history (pinned binary)
+  3. `pnpm test`: the repo tests plus the app and infra unit tests
+  - Typecheck, lint, DB tests (Postgres service container) and Playwright with axe arrive with the chunks that need them.
 - **`evals.yml`** runs on PRs touching `app/src/core/**`, `app/src/model/**`, `evals/**`, or model config; on main; and on manual dispatch.
   - Assumes `fd-eval` via OIDC and runs the evals.
   - Writes the summary to `$GITHUB_STEP_SUMMARY` and uploads the JSON report as an artifact.
-- **`deploy.yml`** runs on push to main after `ci` passes, in the `production` environment.
+- **`deploy.yml`** runs on push to main, in the `production` environment.
   1. Assume `fd-deploy` via OIDC.
-  2. Build the amd64 image and push it to ECR.
-  3. Send an SSM command: ECR login, `docker compose pull`, `docker compose up -d`.
-  4. Poll `/api/health`.
-  5. Ask one live question in a fresh sandbox and require an answer with a citation (PRD Q11).
+  2. Build the amd64 image and push it to ECR, tagged with the commit SHA.
+  3. Send one SSM command to the instance tagged `app=front-desk`: write `compose.prod.yml`, ECR login, `docker compose pull`, `docker compose up -d`. Poll the command for up to 5 minutes and fail unless it succeeds.
+  4. `curl --fail` `/api/health` through the CDN, with retries; the run fails unless it answers.
+  5. Ask one live question in a fresh sandbox and require an answer with a citation (PRD Q11). Arrives in chunk 08.
+  - It is **not** gated on `ci`. Branch protection and rulesets are unavailable for this private repo on the current GitHub plan, so `deploy.yml` runs in parallel with `ci.yml` and a direct push to main with failing tests would still deploy. The rule instead: push the chunk's feature branch first, and merge it to main only after that branch's `ci` run is green.
+  - It reads four GitHub repository variables (variables, not secrets; there are no secrets): `AWS_DEPLOY_ROLE_ARN`, `AWS_EVAL_ROLE_ARN`, `ECR_REPOSITORY_URI`, `APP_URL`. Each is a stack output.
 - **`oracle-guard.yml`** fails a PR that touches `evals/cases/**` without the `oracle-change` label (PRD Q9).
 - **Workflow defaults:**
   - `permissions: contents: read` at the top of every workflow; `id-token: write` only on the jobs that assume a role.
@@ -360,10 +375,10 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 | Local AWS credentials | IAM Identity Center profiles only. No IAM users with access keys. Root has MFA and no keys |
 | Secret scanning | `lefthook` pre-commit runs gitleaks on staged changes; CI runs gitleaks on full history. Don't rely on GitHub's own scanning for a private personal repo |
 | Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook: shell writes into `evals/cases/` are caught by `oracle-guard.yml` in CI and by the frozen oracle's hash pin. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. The local env template is named `env.example`, without a leading dot, so the deny rules don't hide it |
-| Supply chain | pnpm 10, which doesn't run dependency install scripts unless listed in `onlyBuiltDependencies`. `minimumReleaseAge: 1440` in `pnpm-workspace.yaml`. Lockfile committed. Actions pinned by SHA |
+| Supply chain | pnpm 11.9.0, which doesn't run dependency install scripts unless allowed in `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 ignores `onlyBuiltDependencies`). `minimumReleaseAge: 1440` in the same file. Lockfile committed. Actions pinned by SHA |
 | Abuse and cost | Rate limits checked in `scoped.ts` before any model call (PRD S6); `maxTokens` 400; the global daily cap; the budget alert |
 | Errors | Next.js error boundaries and API routes return generic messages; details go to logs only |
-| Headers and CSP | CloudFront response-headers policy plus `next.config` headers. A strict `script-src 'self'` needs nonces in the App Router via middleware; implement that, or document the exact deviation in chunk 08 |
+| Headers and CSP | CloudFront response-headers policy (section 8). Its CSP is `override: false`, a fallback that the app's own CSP replaces once chunk 08 sends one. A strict `script-src 'self'` needs nonces in the App Router via middleware; implement that, or document the exact deviation in chunk 08 |
 | Data | Fictional only (PRD S9). No real names or numbers from source handbooks |
 
 ## 11. Dependencies, budgets, vocabulary
@@ -373,7 +388,9 @@ Data sections are rendered from these fields at assemble time. Only `sections` i
 - `tailwindcss`, shadcn/ui components (copied source) on `@radix-ui/*`, `react-markdown`;
 - `zod`, `@aws-sdk/client-bedrock-runtime`, `drizzle-orm`, `drizzle-kit`, `pg`, `date-holidays`;
 - `vitest`, `@playwright/test`, `@axe-core/playwright`, `tsx`;
-- `aws-cdk-lib`, `constructs`, `lefthook`.
+- `aws-cdk-lib`, `constructs`, `lefthook`;
+- `aws-cdk` (the CLI, an `infra` dev dependency): how Nick runs `cdk bootstrap` and `cdk deploy` through pnpm, pinned in the lockfile, with no global install;
+- `@types/react`, `@types/node` (`app` dev dependencies): `next build` type-checks TypeScript and requires them; types only, nothing ships at runtime.
 - The gitleaks binary is pinned in CI.
 
 **Anything else** needs a one-sentence reason in the plan, approved at the plan gate.
