@@ -7,6 +7,7 @@
   },
   "scripts": {
     "test": "node --test 'tests/repo/**/*.test.mjs' && pnpm -r --filter ./infra --filter ./app --filter ./evals test",
+    "test:e2e": "pnpm --filter ./app test:e2e",
     "eval": "pnpm --filter ./evals run eval"
   },
   "devDependencies": {
