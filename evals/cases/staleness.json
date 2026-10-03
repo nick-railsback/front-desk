@@ -1,0 +1,57 @@
+[
+  {
+    "id": "staleness-1-fall-family-night",
+    "stratum": "staleness",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-08T08:00:00-06:00",
+    "message": "Is Fall Family Night still happening? What time does it start?",
+    "expectedOutcome": "handoff",
+    "expectedReason": "not_in_source",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#", "5:30"],
+    "rationale": "T6: Fall Family Night ended yesterday, so the expired calendar entry and its 5:30 PM time must never appear in a reply."
+  },
+  {
+    "id": "staleness-2-expired-water-alert",
+    "stratum": "staleness",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-14T07:20:00-06:00",
+    "message": "I saw something about the water being shut off at the center. Is that still going on today?",
+    "expectedOutcome": "answer",
+    "acceptableOutcomes": ["handoff"],
+    "expectedReason": "answered",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#", "Water service interruption"],
+    "rationale": "T6 and Appendix A Alerts: the water service interruption alert ended yesterday and must never appear; a handoff is also acceptable."
+  },
+  {
+    "id": "staleness-3-menu-not-posted",
+    "stratum": "staleness",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-14T10:15:00-06:00",
+    "message": "What's for breakfast on Monday the 26th?",
+    "expectedOutcome": "answer",
+    "acceptableOutcomes": ["handoff"],
+    "expectedReason": "answered",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#", "oatmeal"],
+    "rationale": "Appendix A menus run only 10 days ahead (through October 24 for this now), so the October 26 menu is not posted and must not be guessed from the weekly pattern."
+  },
+  {
+    "id": "staleness-4-parking-alert-after-expiry",
+    "stratum": "staleness",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-14T19:30:00-06:00",
+    "message": "Which entrance should I use at drop off tomorrow? Is the parking lot still being worked on?",
+    "expectedOutcome": "answer",
+    "acceptableOutcomes": ["handoff"],
+    "expectedReason": "answered",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#", "Elm Street"],
+    "rationale": "T6 and Appendix A Alerts: the parking alert expires at 6:00 PM on the creation day, so at 7:30 PM its Elm Street instruction is expired and must not appear."
+  }
+]

@@ -1,0 +1,97 @@
+[
+  {
+    "id": "date_time-1-veterans-day-open",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-11-02T10:00:00-07:00",
+    "message": "Are you open on Veterans Day? My office is closed that day so I wasn't sure.",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["calendar"],
+    "requiredFacts": ["11"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "T8 and the Appendix A calendar: Veterans Day (Wednesday, November 11, 2026, within 60 days) is open regular hours."
+  },
+  {
+    "id": "date_time-2-thanksgiving-closed",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-11-16T08:15:00-07:00",
+    "message": "Are you guys open on Thanksgiving?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["calendar"],
+    "requiredFacts": ["closed", "26"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "T8 and the Appendix A calendar: the center is closed on Thanksgiving Day, Thursday, November 26, 2026."
+  },
+  {
+    "id": "date_time-3-day-after-followup",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-11-16T12:00:00-07:00",
+    "priorTurns": [
+      { "role": "parent", "text": "Are you open on Thanksgiving?" },
+      { "role": "front_desk", "text": "No. We're closed on Thanksgiving Day, Thursday, November 26." }
+    ],
+    "message": "What about the day after?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["calendar"],
+    "requiredFacts": ["closed", "27"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "P12 follow-up context plus the Appendix A calendar: the Friday after Thanksgiving (November 27, 2026) is closed."
+  },
+  {
+    "id": "date_time-4-staff-day-weekday",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-07T18:30:00-06:00",
+    "message": "Is there care this coming Tuesday? I have a work trip and need to plan.",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["calendar"],
+    "requiredFacts": ["closed"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A generated staff development day closure: with this now it lands on Tuesday, October 13, 2026 (weekday name used because the seed places it 6 to 10 days ahead, so it can never be tomorrow)."
+  },
+  {
+    "id": "date_time-5-indigenous-peoples-day",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-08T12:30:00-06:00",
+    "message": "The schools are off Monday for Indigenous Peoples' Day. Are you guys open?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["calendar", "hours"],
+    "requiredFacts": ["12"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "T7 weekday resolution and the Appendix A calendar: Columbus Day / Indigenous Peoples' Day (Monday, October 12, 2026) is open regular hours."
+  },
+  {
+    "id": "date_time-6-tomorrow-saturday",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-16T17:45:00-06:00",
+    "message": "are you open tomorrow?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["hours", "calendar"],
+    "requiredFacts": ["closed"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "T7 resolves tomorrow in Denver time to Saturday, October 17, 2026; Appendix A hours are Monday to Friday, so the center is closed."
+  },
+  {
+    "id": "date_time-7-next-open-after-thanksgiving",
+    "stratum": "date_time",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-11-24T14:00:00-07:00",
+    "message": "We're going out of town for Thanksgiving. What's the first day you're open again after the holiday?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["calendar"],
+    "requiredFacts": ["Tuesday", "Dec"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Next open day after a closure: closed Thursday and Friday for Thanksgiving, and with this now the generated staff development day is Monday, November 30, so the first open day is Tuesday, December 1, 2026."
+  }
+]

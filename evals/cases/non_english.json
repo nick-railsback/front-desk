@@ -1,0 +1,41 @@
+[
+  {
+    "id": "non_english-1-spanish-fever",
+    "stratum": "non_english",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-14T06:30:00-06:00",
+    "message": "Hola, ¿mi hija puede ir hoy si tuvo fiebre anoche?",
+    "expectedOutcome": "handoff",
+    "expectedReason": "unsupported_language",
+    "expectedCitations": [],
+    "requiredFacts": ["555-0142"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "P11: a Spanish message gets the fixed English and Spanish handoff that includes the center's phone number, even when the illness policy would cover it in English."
+  },
+  {
+    "id": "non_english-2-vietnamese-saturday",
+    "stratum": "non_english",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-16T12:00:00-06:00",
+    "message": "Chào chị, trung tâm có mở cửa vào thứ Bảy không ạ?",
+    "expectedOutcome": "handoff",
+    "expectedReason": "unsupported_language",
+    "expectedCitations": [],
+    "requiredFacts": ["555-0142"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "P11: a Vietnamese message asking whether the center is open on Saturday gets the fixed unsupported_language handoff with the phone number."
+  },
+  {
+    "id": "non_english-3-french-lunch",
+    "stratum": "non_english",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-21T08:05:00-06:00",
+    "message": "Bonjour, combien coûte le déjeuner de secours si j'oublie le repas de mon fils ?",
+    "expectedOutcome": "handoff",
+    "expectedReason": "unsupported_language",
+    "expectedCitations": [],
+    "requiredFacts": ["555-0142"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "P11: a French message about the backup lunch cost gets the fixed unsupported_language handoff with the phone number."
+  }
+]

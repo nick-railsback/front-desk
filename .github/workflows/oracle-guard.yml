@@ -1,0 +1,20 @@
+name: oracle-guard
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - 'evals/cases/**'
+permissions:
+  contents: read
+jobs:
+  require-label:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the oracle-change label
+        env:
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'oracle-change') }}
+        run: |
+          if [ "$HAS_LABEL" != "true" ]; then
+            echo "This pull request changes evals/cases/. A human must add the oracle-change label."
+            exit 1
+          fi

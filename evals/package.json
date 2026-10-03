@@ -2,10 +2,14 @@
   "name": "@front-desk/evals",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "test": "vitest run"
   },
   "devDependencies": {
     "vitest": "5.0.3"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
   }
 }

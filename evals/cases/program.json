@@ -1,0 +1,54 @@
+[
+  {
+    "id": "program-1-infant-dropoff",
+    "stratum": "program",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-15T09:20:00-06:00",
+    "message": "What's the earliest I can drop off my 10 month old in the morning?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["hours"],
+    "requiredFacts": ["7:30"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Programs: Infants & Toddlers (6 weeks to 3 years) opens at 7:30 AM, later than Preschool's 7:00 AM."
+  },
+  {
+    "id": "program-2-prek-core-pickup",
+    "stratum": "program",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-20T08:45:00-06:00",
+    "message": "My daughter is in Pre-K but not in extended care. What time do I pick her up?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["hours"],
+    "requiredFacts": ["2:30"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Programs: the Pre-K core day ends at 2:30 PM, unlike the 5:30 PM close of the other programs."
+  },
+  {
+    "id": "program-3-toddler-tuition",
+    "stratum": "program",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-21T14:00:00-06:00",
+    "message": "How much is weekly tuition for a 2 year old?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["tuition"],
+    "requiredFacts": ["$385"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Programs: a 2 year old falls in Infants & Toddlers at $385 weekly, not Preschool's $295."
+  },
+  {
+    "id": "program-4-prek-extended-cost",
+    "stratum": "program",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-22T19:05:00-06:00",
+    "message": "Is Pre-K free? We'd need her to stay until 5 most days, what does that cost?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["tuition"],
+    "requiredFacts": ["$95"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Programs: the Pre-K core day is state-funded with no tuition, and extended care to 5:30 PM is $95."
+  }
+]
