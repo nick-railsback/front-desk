@@ -40,7 +40,7 @@ export type Alert = { id: string; text: string; startsAt: string; expiresAt: str
 
 export type Question = { id: string; text: string; askedAt: string; reply: Reply };
 
-export type Gap = { id: string; label: string; status: 'open'; questionIds: string[] };
+export type Gap = { id: string; label: string; status: 'open' | 'resolved'; questionIds: string[] };
 
 export type Snapshot = { version: number; sections: Section[] };
 

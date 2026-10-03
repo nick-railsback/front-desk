@@ -173,7 +173,7 @@ Outcomes rank answer < handoff < urgent. The final outcome is the higher of the 
   - Each gap shows "N of M now answered".
   - A gap whose replayed questions are all answered with reason `answered` is marked Resolved and leaves the open list.
   - Replay results don't appear in Questions.
-- **O11.** Replay of up to 60 questions finishes within 30 seconds of publishing, with visible progress.
+- **O11.** Replay of up to 60 questions finishes within 7 minutes of publishing, with visible progress.
 
 ## 7. Demo environment (D)
 

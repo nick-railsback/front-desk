@@ -111,3 +111,20 @@ export const usageGlobal = pgTable('usage_global', {
   day: text('day').primaryKey(),
   count: integer('count').notNull(),
 });
+
+// One gap's outcome in a replay: how many of its questions were re-run, how
+// many of those came back answered, and whether that resolved the gap.
+export type ReplayResult = { gapId: string; label: string; replayed: number; answered: number; resolved: boolean };
+
+// One replay of the open gaps' questions after a publish (PRD O10, O11): its
+// progress while it runs and each gap's result once it is done.
+export const replays = pgTable('replays', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sandboxId: sandboxId(),
+  snapshotVersion: integer('snapshot_version').notNull(),
+  status: text('status').notNull(), // running, done or failed
+  completed: integer('completed').notNull(),
+  total: integer('total').notNull(),
+  results: jsonb('results').$type<ReplayResult[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});

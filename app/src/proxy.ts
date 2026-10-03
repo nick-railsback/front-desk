@@ -1,8 +1,8 @@
 // First visit (PRD D1): gives a browser without a valid sandbox cookie its own
-// sandbox before the parent view renders, and sets the cookie on the page's
-// own response. A server component cannot set cookies, so this runs here.
-// The page reads the sandbox from the x-fd-sandbox request header, which only
-// this proxy sets: any copy the browser sent is dropped.
+// sandbox before the parent or operator view renders, and sets the cookie on
+// the page's own response. A server component cannot set cookies, so this
+// runs here. The page reads the sandbox from the x-fd-sandbox request header,
+// which only this proxy sets: any copy the browser sent is dropped.
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { createSandbox, forSandbox } from './db/sandbox';
@@ -24,9 +24,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return response;
   } catch (err) {
     // The page renders its unavailable message when no sandbox reaches it.
-    console.error('proxy: no sandbox for the parent view:', err);
+    console.error('proxy: no sandbox for the view:', err);
     return NextResponse.next({ request: { headers } });
   }
 }
 
-export const config = { matcher: '/' };
+export const config = { matcher: ['/', '/operator'] };

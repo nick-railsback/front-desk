@@ -23,7 +23,15 @@ export type AskResult = AnswerRecord & {
   cited: CitedSection[];
 };
 
-function citedSections(reply: Reply, policy: Section[], data: Section[]): CitedSection[] {
+// The day's cap on model calls across every sandbox, replays included (PRD
+// S6). Read per call, so a changed environment takes effect at once.
+export function globalDailyModelCalls(): number {
+  return Number(process.env.GLOBAL_DAILY_MODEL_CALLS ?? DEFAULT_GLOBAL_DAILY_MODEL_CALLS);
+}
+
+// The sections a reply cites, as the parent view showed them. The operator
+// view draws an earlier reply's chips with it too.
+export function citedSections(reply: Reply, policy: Section[], data: Section[]): CitedSection[] {
   return reply.citations.flatMap(({ sectionId }) => {
     const p = policy.find((s) => s.id === sectionId);
     const s = p ?? data.find((d) => d.id === sectionId);
@@ -66,8 +74,7 @@ export async function ask(
   if (counts.minute > MESSAGES_PER_MINUTE || counts.day > MESSAGES_PER_DAY) return notice();
   // Urgent floors never reach the model, so they never use up a model call.
   if (floor.floor !== 'urgent') {
-    const cap = Number(process.env.GLOBAL_DAILY_MODEL_CALLS ?? DEFAULT_GLOBAL_DAILY_MODEL_CALLS);
-    if (!(await reserveModelCall(today, cap))) return notice();
+    if (!(await reserveModelCall(today, globalDailyModelCalls()))) return notice();
   }
 
   const record = await answer(input, { snapshot, calendar, openGapLabels: context.openGapLabels, model: deps.model, clock: deps.clock });
