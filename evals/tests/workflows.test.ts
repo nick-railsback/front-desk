@@ -47,16 +47,18 @@ function jobPermissions(job: Job): Record<string, string> {
   return permissions(entry);
 }
 
-// The eval workflow runs only on manual dispatch. Its one eval job alone
+// The eval workflow runs on manual dispatch, on push to main, and on pull
+// requests (chunk 05; evals/tests/pipeline/eval-workflow.test.ts checks the
+// filters). Its one eval job alone
 // gets id-token: write to assume a role through OIDC, runs the runner with
 // nothing that swallows a non-zero exit, appends summary.md to the step
 // summary, and uploads report.json as an artifact.
 describe('eval workflow', () => {
-  test('manual dispatch is the only trigger', () => {
+  test('manual dispatch, push, and pull requests are the triggers', () => {
     const text = read(EVALS);
     const triggers = repo.workflowTriggers(text);
     expect(triggers, 'on: is declared').not.toBeNull();
-    expect(Object.keys(triggers)).toEqual(['workflow_dispatch']);
+    expect(Object.keys(triggers).sort()).toEqual(['pull_request', 'push', 'workflow_dispatch']);
   });
 
   test('id-token: write is granted on the eval job only', () => {

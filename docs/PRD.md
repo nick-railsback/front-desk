@@ -231,7 +231,7 @@ Outcomes rank answer < handoff < urgent. The final outcome is the higher of the 
 - **Q7.** CI runs the eval on pull requests that change answer behavior (pipeline, prompt, model configuration, or eval cases) and on main. It posts the Markdown summary and fails if any gated metric is below 1.00.
 - **Q8.** A deterministic test suite with no network access and scripted model responses runs on every pull request. It covers every invariant that code enforces: T1 (stated floors), T2 through T7, T10 (pickup-list refusal), T11, and T13.
 - **Q9.** A pull request that changes eval case files fails CI unless a human has applied the `oracle-change` label.
-- **Q10.** One eval run costs under $2 in model usage and finishes in under 5 minutes.
+- **Q10.** One eval run costs under $2 in model usage and finishes in under 20 minutes.
 - **Q11.** After each deploy, an automated check asks the deployed app one question and requires an answer with at least one citation.
 
 ## 9. Security and privacy (S)

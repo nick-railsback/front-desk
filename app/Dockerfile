@@ -10,10 +10,11 @@ COPY app/ app/
 RUN pnpm --filter @front-desk/app build
 
 FROM node:22-slim
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1 MIGRATIONS_DIR=/srv/app/migrations
 WORKDIR /srv
 COPY --from=build /repo/app/.next/standalone ./
 COPY --from=build /repo/app/.next/static ./app/.next/static
+COPY --from=build /repo/app/src/db/migrations ./app/migrations
 USER node
 EXPOSE 3000
 CMD ["node", "app/server.js"]

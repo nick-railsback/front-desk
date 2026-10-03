@@ -54,6 +54,15 @@ export const turns = pgTable(
     snapshotVersion: integer('snapshot_version').notNull(),
     citations: jsonb('citations').$type<Citation[]>().notNull(),
     source: text('source').notNull().default('seed'),
+    // The T13 log fields. Null on seeded history, which was never answered live.
+    proposedOutcome: text('proposed_outcome'),
+    floorsFired: jsonb('floors_fired').$type<string[]>(),
+    language: text('language'),
+    topic: text('topic'),
+    latencyMs: integer('latency_ms'),
+    inputTokens: integer('input_tokens'),
+    cachedInputTokens: integer('cached_input_tokens'),
+    outputTokens: integer('output_tokens'),
   },
   (t) => [primaryKey({ columns: [t.sandboxId, t.id] })],
 );
@@ -82,3 +91,21 @@ export const gapMembers = pgTable(
     foreignKey({ columns: [t.sandboxId, t.turnId], foreignColumns: [turns.sandboxId, turns.id] }).onDelete('cascade'),
   ],
 );
+
+// Messages per sandbox in one bucket: a Denver minute (`m:2026-11-04T10:15`)
+// or a Denver day (`d:2026-11-04`).
+export const usageSandbox = pgTable(
+  'usage_sandbox',
+  {
+    sandboxId: sandboxId(),
+    bucket: text('bucket').notNull(),
+    count: integer('count').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.sandboxId, t.bucket] })],
+);
+
+// Model calls across every sandbox on one Denver day.
+export const usageGlobal = pgTable('usage_global', {
+  day: text('day').primaryKey(),
+  count: integer('count').notNull(),
+});

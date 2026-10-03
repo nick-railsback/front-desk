@@ -1,8 +1,25 @@
 name: evals
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+  # Changes to answer behavior: the pipeline, its instructions and model
+  # configuration (app/src/core/, app/src/server/), the route, the case set
+  # and the harness, and MODEL_ID in the production compose file.
+  pull_request:
+    paths:
+      - app/src/core/**
+      - app/src/server/**
+      - app/src/app/api/ask/**
+      - evals/**
+      - infra/compose.prod.yml
 permissions:
   contents: read
+# Runs share the Bedrock quota (10 requests per minute), so one at a time; a
+# queued run waits rather than cancelling the one in progress.
+concurrency:
+  group: evals
+  cancel-in-progress: false
 jobs:
   eval:
     runs-on: ubuntu-24.04
