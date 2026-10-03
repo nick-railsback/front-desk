@@ -7,3 +7,9 @@ node_modules/
 next-env.d.ts
 cdk.out/
 evals/reports/
+test-results/
+playwright-report/
+# Written by `next dev` when it detects a coding agent; not ours to commit.
+app/AGENTS.md
+app/CLAUDE.md
+*.tsbuildinfo

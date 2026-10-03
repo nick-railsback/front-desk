@@ -6,7 +6,7 @@ import { renderDataSections } from '../core/assemble';
 import { answer, noticeReply } from '../core/answer';
 import { floorFor } from '../core/floors';
 import { denverMinutes } from '../core/today';
-import type { AnswerRecord, Clock, Model, Section, Turn } from '../core/types';
+import type { AnswerRecord, CitedSection, Clock, Model, Reply, Section, Turn } from '../core/types';
 import { forSandbox, reserveModelCall } from '../db/sandbox';
 import { denverDate } from '../seed/dates';
 
@@ -15,7 +15,21 @@ const MESSAGES_PER_MINUTE = 20;
 const MESSAGES_PER_DAY = 200;
 const DEFAULT_GLOBAL_DAILY_MODEL_CALLS = 3000;
 
-export type AskResult = AnswerRecord & { snapshot: { version: number; sections: Section[] } };
+// The record, the snapshot the reply was made from, the stored turn's ID (null
+// for a notice, which is never stored), and the sections the reply cites.
+export type AskResult = AnswerRecord & {
+  snapshot: { version: number; sections: Section[] };
+  replyId: string | null;
+  cited: CitedSection[];
+};
+
+function citedSections(reply: Reply, policy: Section[], data: Section[]): CitedSection[] {
+  return reply.citations.flatMap(({ sectionId }) => {
+    const p = policy.find((s) => s.id === sectionId);
+    const s = p ?? data.find((d) => d.id === sectionId);
+    return s ? [{ id: s.id, title: s.title, kind: p ? 'policy' : 'data', updatedOn: s.updatedOn, text: s.text } as const] : [];
+  });
+}
 
 export async function ask(
   input: { sandboxId: string; message: string; priorTurns: Turn[]; now: Date },
@@ -25,7 +39,8 @@ export async function ask(
   const access = forSandbox(sandboxId);
   const context = await access.context();
   const { calendar } = context.structured;
-  const snapshot = { version: context.snapshot.version, sections: [...context.snapshot.sections, ...renderDataSections(context.structured, now)] };
+  const data = renderDataSections(context.structured, now);
+  const snapshot = { version: context.snapshot.version, sections: [...context.snapshot.sections, ...data] };
   const floor = floorFor(message);
   const notice = (): AskResult => ({
     reply: noticeReply(now, calendar, snapshot.version),
@@ -41,6 +56,8 @@ export async function ask(
     gapLabel: null,
     failure: null,
     snapshot,
+    replyId: null,
+    cited: [],
   });
 
   if (message.length > MAX_MESSAGE_CHARS) return notice();
@@ -57,5 +74,5 @@ export async function ask(
   if (record.failure) console.error(`ask: ${record.failure}`);
   const turnId = await access.storeReply(message, now, record);
   if (record.gapLabel) await access.fileIntoGap(turnId, record.gapLabel);
-  return { ...record, snapshot };
+  return { ...record, snapshot, replyId: turnId, cited: citedSections(record.reply, context.snapshot.sections, data) };
 }

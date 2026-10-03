@@ -1,9 +1,9 @@
 // Open days, office hours, and the expectation line, all in America/Denver
 // from the injected `now`. Pure.
 
-import type { CalendarEntry } from '../seed';
+import type { Alert, CalendarEntry, Seed } from '../seed';
 import { TIMEZONE, addDays, denverDate, isWeekday } from '../seed/dates';
-import { OFFICE_OPEN_LINE, officeClosedLine } from './copy';
+import { NO_MENU, OFFICE_OPEN_LINE, TODAY, officeClosedLine } from './copy';
 
 // The office is staffed Monday to Friday, 7:00 AM to 5:30 PM, on open days.
 const OFFICE_OPENS_MIN = 7 * 60;
@@ -51,4 +51,29 @@ export function expectationLine(now: Date, calendar: CalendarEntry[]): string {
   if (openToday && minutes >= OFFICE_OPENS_MIN && minutes < OFFICE_CLOSES_MIN) return OFFICE_OPEN_LINE;
   const day = openToday && minutes < OFFICE_OPENS_MIN ? today : nextOpenDay(today, calendar);
   return officeClosedLine(OFFICE_OPENING_TIME, longDate(day));
+}
+
+// The alerts active at `now`: started, and not yet expired.
+export function activeAlerts(alerts: Alert[], now: Date): Alert[] {
+  return alerts.filter((a) => Date.parse(a.startsAt) <= now.getTime() && now.getTime() < Date.parse(a.expiresAt));
+}
+
+export type TodayCard = { date: string; open: boolean; status: string; hours: string[]; menu: string[]; alerts: string[] };
+
+// The parent view's Today card (PRD P2): the day in Denver, whether the
+// center is open, each program's hours, the menu, and the active alerts.
+export function todayCard(structured: Seed['structured'], now: Date): TodayCard {
+  const { calendar, programs, menus, alerts } = structured;
+  const today = denverDate(now);
+  const open = isOpenDay(today, calendar);
+  const closedFor = calendar.find((e) => e.status === 'closed' && e.date === today)?.name ?? TODAY.weekend;
+  const items = menus.find((m) => m.date === today)?.items ?? [];
+  return {
+    date: longDate(today),
+    open,
+    status: open ? TODAY.open : TODAY.closed(closedFor, longDate(nextOpenDay(today, calendar))),
+    hours: open ? programs.map((p) => `${p.name}: ${p.hours.replace(/^Monday to Friday, /, '')}`) : [],
+    menu: items.length > 0 ? items : [NO_MENU],
+    alerts: activeAlerts(alerts, now).map((a) => a.text),
+  };
 }
