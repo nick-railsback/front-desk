@@ -1,0 +1,1 @@
+ALTER TABLE "turns" ADD COLUMN "sent_to_front_desk" timestamp with time zone;

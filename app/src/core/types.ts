@@ -35,6 +35,16 @@ export type Reply = {
   citations: Citation[];
 };
 
+// A section a reply cites, as the parent view shows it: a policy section from
+// the snapshot, or a data section rendered from structured data.
+export type CitedSection = {
+  id: string;
+  title: string;
+  kind: 'policy' | 'data';
+  updatedOn: string;
+  text: string;
+};
+
 // The eight allowed outcome and reason pairs: each reason belongs to exactly one outcome.
 export const ALLOWED_PAIRS = {
   answered: 'answer',

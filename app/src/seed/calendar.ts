@@ -59,13 +59,14 @@ export function calendar(creation: string): CalendarEntry[] {
   ];
 }
 
-// Breakfast and afternoon snack only: families pack lunch (Meals policy).
+// Breakfast, a backup lunch for a child who arrives without one, and
+// afternoon snack: families pack lunch (Meals policy).
 const DAY_MENUS: string[][] = [
-  ['Breakfast: oatmeal with sliced bananas', 'Afternoon snack: apple slices and cheese'],
-  ['Breakfast: whole wheat toast with scrambled eggs', 'Afternoon snack: carrot sticks and hummus'],
-  ['Breakfast: yogurt with berries', 'Afternoon snack: whole grain crackers and pears'],
-  ['Breakfast: whole grain cereal with milk', 'Afternoon snack: cucumber slices and cheese cubes'],
-  ['Breakfast: pancakes with applesauce', 'Afternoon snack: orange wedges and graham crackers'],
+  ['Breakfast: oatmeal with sliced bananas', 'Backup lunch: turkey and cheese sandwich', 'Afternoon snack: apple slices and cheese'],
+  ['Breakfast: whole wheat toast with scrambled eggs', 'Backup lunch: bean and cheese quesadilla', 'Afternoon snack: carrot sticks and hummus'],
+  ['Breakfast: yogurt with berries', 'Backup lunch: pasta with tomato sauce', 'Afternoon snack: whole grain crackers and pears'],
+  ['Breakfast: whole grain cereal with milk', 'Backup lunch: sunflower butter and jelly sandwich', 'Afternoon snack: cucumber slices and cheese cubes'],
+  ['Breakfast: pancakes with applesauce', 'Backup lunch: chicken and rice bowl', 'Afternoon snack: orange wedges and graham crackers'],
 ];
 
 export function menus(creation: string): Menu[] {

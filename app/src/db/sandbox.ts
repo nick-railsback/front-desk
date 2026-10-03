@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate as runMigrations } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -214,6 +214,26 @@ export function forSandbox(sandboxId: string) {
         if (!open) await tx.insert(gaps).values({ sandboxId, id: gapId, label, status: 'open' });
         await tx.insert(gapMembers).values({ sandboxId, gapId, turnId });
       });
+    },
+
+    // Marks a stored reply as sent to the front desk. True only when this call
+    // set the mark: a reply already sent, urgent, seeded, or not in this
+    // sandbox is left unchanged.
+    async markSent(turnId: string, now: Date): Promise<boolean> {
+      const rows = await db()
+        .update(turns)
+        .set({ sentToFrontDesk: now })
+        .where(
+          and(
+            eq(turns.sandboxId, sandboxId),
+            eq(turns.id, turnId),
+            eq(turns.source, 'live'),
+            ne(turns.outcome, 'urgent'),
+            isNull(turns.sentToFrontDesk),
+          ),
+        )
+        .returning({ id: turns.id });
+      return rows.length > 0;
     },
 
     // The replies the pipeline stored, without the seeded history.

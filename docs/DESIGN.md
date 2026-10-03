@@ -34,19 +34,21 @@ app/                    Next.js (App Router), TypeScript
     assemble.ts         renders data sections and the snapshot into the model input
     instructions.ts     the model instructions (system block A)
     grounding.ts        value extraction + normalization (T2)
-    today.ts            open days, office hours, the expectation line (no model)
+    today.ts            open days, office hours, the expectation line, the Today card (no model)
     gaps.ts             pure gap matching
     types.ts            Section, Reply, Outcome, Reason, Model, Clock, ModelOutput (Zod)
     copy.ts             every user-facing string (A8)
   src/server/           ask.ts (limits, storage, gap filing around answer()), model.ts (getModel, MODEL_ID),
-                        adapters bedrock.ts and fixture.ts, clock.ts (the real clock)
+                        adapters bedrock.ts and fixture.ts, clock.ts (the real clock),
+                        sandbox-cookie.ts (the fd_sandbox cookie and the x-fd-sandbox header)
   src/instrumentation.ts  applies migrations at server start
+  src/proxy.ts          first visit to /: creates the sandbox and sets its cookie on the page's response
   src/db/               schema.ts, migrations/ (generated), sandbox.ts (all sandbox-scoped access, via forSandbox)
   src/seed/             seed(now): index.ts (the Seed type), center.ts, calendar.ts, sections.ts, history.ts, dates.ts
-  src/app/              routes: / (parent), /operator, /api/*
+  src/app/              routes: / (parent), /operator, /api/ask, /api/send, /api/health; globals.css (plain CSS)
+  src/app/parent/       the parent view's components: today-card, parent-view (client), reply, phone
   tests/unit/           vitest, no network
-  tests/e2e/            Playwright + axe, fixture model
-  tests/fixtures/model/ recorded model outputs for e2e
+  tests/e2e/            Playwright + axe, fixture model with scripted replies (`fixture:<reason> `)
 evals/
   src/cases.ts          case schema and loader; every problem names its case
   src/metrics.ts        gated and reported metrics. Pure
@@ -223,7 +225,7 @@ The eval's `grounded` metric reuses this extractor, so a bug here is correlated 
 
 ### 4.8 Today card and expectations (`today.ts`)
 
-- **Today card:** a pure function of (snapshot structured data, now, timezone). It returns open or closed, per-program hours, the menu, and active alerts.
+- **Today card:** `todayCard(structured, now)`, a pure function of the sandbox's structured data and `now`, in America/Denver. It returns the date, open or closed (with the reason and the next open day), per-program hours, the menu, and active alerts. The page computes it at server time; the model is never called.
 - **Office-hours expectation:** a pure function returning either "today" or (opening time, next open day). Closures count as non-open days.
 
 ### 4.9 Gap filing (`gaps.ts`, pure)
@@ -276,7 +278,7 @@ Planned for later chunks:
 - language, topic;
 - latency_ms, input_tokens, cached_input_tokens, output_tokens.
 
-`conversation_id` and `sent_to_front_desk` wait for chunk 06, which has conversations and the Send to front desk action.
+Chunk 06 added `sent_to_front_desk` (migration `0002_sent_to_front_desk`): a nullable timestamp, set once by Send to front desk, and only on a `live` reply that is not urgent. Chunk 07's Questions list reads it. `conversation_id` is not built: a conversation lives in the parent's browser and is never stored, so a stored turn belongs to no conversation.
 
 **Why this split:** sections are a versioned document, so each snapshot is one jsonb value. Structured data is one jsonb document because only sections are ever edited and nothing queries inside it. Traffic (turns, gaps, replays) is relational because every operator view is a join or a group-by.
 
@@ -308,7 +310,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 | Adapter | Used by | Behavior |
 |---|---|---|
 | `bedrock` (`src/server/bedrock.ts`) | The deployed app, the eval runner, manual local runs (AWS SSO profile) | The real call |
-| `fixture` (`src/server/fixture.ts`) | `MODEL_MODE=fixture`: `pnpm dev`, e2e tests, the fixture eval | Answers every message with a valid `not_in_source` handoff whose topic is the message's first words. No network, files, or credentials. It exercises the plumbing, not quality |
+| `fixture` (`src/server/fixture.ts`) | `MODEL_MODE=fixture`: `pnpm dev`, e2e tests, the fixture eval | Answers every message with a valid `not_in_source` handoff whose topic is the message's first words. A message starting with `fixture:<reason> ` gets a scripted output for that reason instead (`answered`, `grounding_failed`, `not_in_source`, `unsupported_language`, `system_error`), so the e2e tests reach every reason. No network, files, or credentials. It exercises the plumbing, not quality |
 | `scripted` | Chunk oracles | Returns exactly the output the test supplies |
 
 `getModel()` in `src/server/model.ts` picks `fixture` when `MODEL_MODE=fixture` and `bedrock` otherwise; `MODEL_ID` and the region live there too.
@@ -319,7 +321,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 
 - **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth only where the logic is ours and complicated: grounding normalization (each value type and equivalent form), the floor lexicons (positive cases and the non-trigger words), and Denver calendar math. No tests that re-verify proven packages.
 - **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of sandbox data. They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
-- **e2e tests (Playwright).** Use the fixture model and run axe on each view state (PRD A1).
+- **e2e tests (Playwright).** `pnpm test:e2e`, never part of `pnpm test`. They start `next dev` with the fixture model and reach each reason through its `fixture:<reason> ` prefix, read Postgres directly to check what was stored, and run axe on each view state (PRD A1).
 - **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. The frozen tests drive it with scripted replies on a fake clock.
 - **Eval CLI (`evals/src/cli.ts`, `pnpm eval`).** Wires the runner to core `answer()` with `getModel()`, core's `isGrounded`, and the real clock, with no database: each trial's data sections and open gaps come from `seed(case.now)`. Pacing: concurrency 2 and one start every 6,000 ms for Bedrock; concurrency 8 and no interval with `MODEL_MODE=fixture`. Reports go to `evals/reports/` (git-ignored).
   1. Load and Zod-validate the cases (`src/cases.ts`). Any invalid case stops the run before any trial: exit 1, with the case's id printed.
@@ -375,8 +377,9 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   1. `pnpm install --frozen-lockfile`
   2. gitleaks over full history (pinned binary)
   3. `pnpm test`: the repo tests plus the app, infra, and evals tests
-  - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests.
-  - Typecheck, lint, and Playwright with axe arrive with the chunks that need them.
+  4. `playwright install --with-deps chromium`, then `pnpm test:e2e`: the browser tests with axe (chunk 06)
+  - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests and the browser tests can read it.
+  - Typecheck and lint arrive with the chunks that need them.
 - **`evals.yml`** runs on manual dispatch, on push to main, and on pull requests touching `app/src/core/**`, `app/src/server/**`, `app/src/app/api/ask/**`, `evals/**`, or `infra/compose.prod.yml` (`MODEL_ID`).
   - One `concurrency` group (`evals`, `cancel-in-progress: false`): runs share the Bedrock quota, so a queued run waits for the one in progress.
   - Assumes `fd-eval` via OIDC and runs the evals. A dispatch from a feature branch fails at the role step, because `fd-eval` trusts only pull request and main subjects.
@@ -425,6 +428,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - `aws-cdk` (the CLI, an `infra` dev dependency): how Nick runs `cdk bootstrap` and `cdk deploy` through pnpm, pinned in the lockfile, with no global install;
 - `@types/react`, `@types/node` (`app` dev dependencies): `next build` type-checks TypeScript and requires them; types only, nothing ships at runtime.
 - `@types/pg` (`app` dev dependency, added in chunk 03): `pg` ships no types and `next build` type-checks `src/db/` under `strict`; types only.
+- `tailwindcss`, shadcn/ui and `@radix-ui/*` stay allowlisted but unused: the parent view is styled by one plain CSS file, `src/app/globals.css`.
 - `date-holidays` stays allowlisted but unused: the seed computes the center's holidays from fixed-date and nth-weekday rules in `src/seed/calendar.ts`.
 - The gitleaks binary is pinned in CI.
 

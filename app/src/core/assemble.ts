@@ -6,7 +6,7 @@
 import type { Seed } from '../seed';
 import { addDays, denverDate } from '../seed/dates';
 import { INSTRUCTIONS } from './instructions';
-import { clockTime, isOpenDay, longDate, nextOpenDay } from './today';
+import { activeAlerts, clockTime, isOpenDay, longDate, nextOpenDay } from './today';
 import type { ModelRequest, Section, Turn } from './types';
 
 type Structured = Seed['structured'];
@@ -40,7 +40,7 @@ function calendarLines(structured: Structured, now: Date, today: string): string
 export function renderDataSections(structured: Structured, now: Date): Section[] {
   const today = denverDate(now);
   const { center, programs, registrationFee, menus, alerts } = structured;
-  const active = alerts.filter((a) => Date.parse(a.startsAt) <= now.getTime() && now.getTime() < Date.parse(a.expiresAt));
+  const active = activeAlerts(alerts, now);
   return [
     dataSection('hours', 'Hours', today, [
       'The center is open Monday to Friday.',

@@ -43,3 +43,5 @@ jobs:
       - name: Scan full history for secrets
         run: gitleaks git --redact --no-banner --verbose .
       - run: pnpm test
+      - run: pnpm --filter ./app exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
