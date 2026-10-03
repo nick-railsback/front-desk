@@ -6,7 +6,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test 'tests/repo/**/*.test.mjs' && pnpm -r --filter ./infra --filter ./app --filter ./evals test"
+    "test": "node --test 'tests/repo/**/*.test.mjs' && pnpm -r --filter ./infra --filter ./app --filter ./evals test",
+    "eval": "pnpm --filter ./evals run eval"
   },
   "devDependencies": {
     "lefthook": "2.1.15"

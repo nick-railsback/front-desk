@@ -27,7 +27,8 @@ export type AnswerInput = {
 export type RunOptions = {
   casesDir: string;
   answer: (input: AnswerInput) => Promise<TrialRecord>;
-  groundingCheck: (reply: Reply, snapshot: Snapshot) => boolean;
+  // `now` is the case's current time, so a check can re-render data sections.
+  groundingCheck: (reply: Reply, snapshot: Snapshot, now: Date) => boolean;
   // Trials in flight at once.
   concurrency: number;
   // The least time between the starts of any two trials. Every trial waits its
@@ -84,7 +85,7 @@ async function runTrials(cases: Case[], options: RunOptions): Promise<CaseResult
         now: new Date(c.now),
         snapshot,
       });
-      results[ci].trials[n] = { record, grounded: options.groundingCheck(record.reply, snapshot) };
+      results[ci].trials[n] = { record, grounded: options.groundingCheck(record.reply, snapshot, new Date(c.now)) };
     }
   }
 

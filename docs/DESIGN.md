@@ -29,18 +29,18 @@ POST /api/ask
 ```
 app/                    Next.js (App Router), TypeScript
   src/core/             pipeline. Pure: model and clock are injected. No DB, no fetch.
-    answer.ts           orchestrator; reads top to bottom, calls the stages below
-    normalize.ts
-    floors.ts           urgent/sensitive lexicons + language floor
-    assemble.ts         renders snapshot + resolved dates into model input
+    answer.ts           orchestrator: floors, model call with retry, post-guard, outcome ladder, fixed text
+    floors.ts           urgent/sensitive lexicons
+    assemble.ts         renders data sections and the snapshot into the model input
+    instructions.ts     the model instructions (system block A)
     grounding.ts        value extraction + normalization (T2)
-    postguard.ts
-    render.ts           reply view model, fixed copy selection
-    today.ts            Today card + office-hours expectation (no model)
+    today.ts            open days, office hours, the expectation line (no model)
     gaps.ts             pure gap matching
-    types.ts            Section, Reply, Outcome, Reason as plain types; Zod (ModelOutput) arrives in chunk 05
+    types.ts            Section, Reply, Outcome, Reason, Model, Clock, ModelOutput (Zod)
     copy.ts             every user-facing string (A8)
-  src/model/            adapters: bedrock.ts, fixture.ts, scripted.ts
+  src/server/           ask.ts (limits, storage, gap filing around answer()), model.ts (getModel, MODEL_ID),
+                        adapters bedrock.ts and fixture.ts, clock.ts (the real clock)
+  src/instrumentation.ts  applies migrations at server start
   src/db/               schema.ts, migrations/ (generated), sandbox.ts (all sandbox-scoped access, via forSandbox)
   src/seed/             seed(now): index.ts (the Seed type), center.ts, calendar.ts, sections.ts, history.ts, dates.ts
   src/app/              routes: / (parent), /operator, /api/*
@@ -54,7 +54,8 @@ evals/
   drafts/               agent-drafted cases awaiting Nick's review; empty once he moves them
   cases/                eval cases (JSON), reviewed. Protected oracle data.
   tests/                vitest, scripted replies on a fake clock, no network
-  reports/              generated: report.json and summary.md. The CLI that writes them arrives in chunk 05
+  src/cli.ts            `pnpm eval`: the runner wired to core answer() and getModel()
+  reports/              generated and git-ignored: report.json and summary.md
 infra/                  CDK app (TypeScript), one stack
   bin/                  front-desk.ts, the CDK entry point
   lib/                  front-desk-stack.ts, the stack
@@ -73,21 +74,26 @@ The workspace has three pnpm packages: `app`, `evals`, `infra`. `evals` imports 
 ### 4.1 Contract in code
 
 ```ts
-answer(input: NormalizedInput, ctx: {
-  snapshot: Snapshot;            // latest published
-  now: Date;                     // injected; never Date.now() inside core
-  model: Model;                  // bedrock | fixture | scripted
-  openGapLabels: string[];
-}): Promise<ReplyRecord>         // reply view model + everything T13 logs
+// app/src/core/answer.ts, pure
+answer(
+  input: { message: string; priorTurns: Turn[]; now: Date },   // now is injected; never Date.now() inside core
+  ctx: {
+    snapshot: { version: number; sections: Section[] };       // latest published, plus the six data sections
+    calendar: CalendarEntry[];                                 // for the expectation line
+    openGapLabels: string[];
+    model: Model;                                              // bedrock | fixture | scripted
+    clock: Clock;                                              // { now(), sleep(ms) }: the deadline and backoffs
+  },
+): Promise<AnswerRecord>   // the reply + everything T13 logs; the eval's trial record
 ```
 
-The API route is a thin wrapper around this function. In order, it handles:
-1. the sandbox cookie;
-2. rate limits;
-3. loading the snapshot and open gaps;
-4. calling `answer()`;
-5. persisting the turn;
-6. gap filing.
+`app/src/server/ask.ts` is the database half. `ask({ sandboxId, message, priorTurns, now }, { model, clock })`, in order:
+1. loads the sandbox's latest snapshot, structured data, and open gap labels, and renders the data sections at `now`;
+2. enforces the limits (500 characters, 20 a minute and 200 a day per sandbox, the global daily model-call cap); over a limit the reply is a fixed notice, never stored or filed;
+3. calls `answer()`;
+4. stores the reply and files it into its gap.
+
+`POST /api/ask` is a thin wrapper around `ask()`: it handles the sandbox cookie and turns any failure into the fixed `system_error` handoff.
 
 The eval runner calls the same `answer()`. That is the "one path" rule: whatever is measured is what ships.
 
@@ -97,10 +103,11 @@ The eval runner calls the same `answer()`. That is the "one path" rule: whatever
    - **In:** sandbox ID (from the cookie, never the body), conversation ID, message (trimmed, 500-character cap), the last 2 exchanges.
    - **Dropped:** everything else.
 2. **pre-guard** runs the floor lexicons.
-   - If an urgent or sensitive lexicon fires, return the template reply for that floor. **No model call is made.** If code already knows the answer is "talk to a person", the model isn't asked.
+   - If an urgent lexicon fires, return the urgent template. **No model call is made:** nothing ranks above urgent, so the model cannot change the outcome.
+   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff.
    - The model's judgment matters for the subtle phrasings; those live in the eval strata built to slip past the lexicons.
 3. **assemble** builds the model input (4.4).
-4. **model** makes one call (4.5). Timeout 15 s.
+4. **model** makes one call (4.5). One 15 s deadline on the injected clock covers the call and its retries: a `ThrottlingException` is retried after 500, 1000, 2000 and 4000 ms backoffs while another attempt still fits.
 5. **post-guard** runs in a fixed order (4.6).
 6. **render** builds the reply view model. Handoff and urgent text always comes from `copy.ts`.
 
@@ -109,21 +116,20 @@ The eval runner calls the same `answer()`. That is the "one path" rule: whatever
 The lexicons are phrase lists in `floors.ts`, matched case-insensitively on word boundaries. They are deliberately small and favor over-triggering, with these exceptions designed in from the start:
 
 - **Urgent:**
-  - not breathing, unconscious, seizure, choking, allergic reaction, epipen, bleeding, hit (his|her|their) head, broke(n) (arm|leg|bone);
-  - can't find (my|our) (son|daughter|child|kid), missing child;
-  - abuse(d), neglect, hurt by;
-  - drunk / intoxicated / high + pick(ing) up, stranger + pick(ing) up;
-  - gun, weapon, threat;
-  - call 911.
+  - not breathing, unconscious, not responding, seizure, choking, allergic reaction, epipen, bleeding, hit (his|her|their) head, broke(n) (arm|leg|bone), call 911 (reason `emergency`);
+  - can't find (my|our) (son|daughter|child|kid), (child) is missing, missing child;
+  - abuse(d), neglect, hurt by, hit (my|our) (child);
+  - drunk / intoxicated / high / impaired + pick(ing) up, stranger + pick(ing) up, not on (our) pickup list, trying to take (my|our) (child);
+  - gun, weapon, knife, threat, going to (hurt|kill|shoot|attack).
 - **Sensitive:**
   - custody, court order, restraining order, my ex;
   - lawyer, complaint about, report (a|the) teacher;
   - refund, overcharged, charged twice, dispute;
-  - incident report;
-  - who is on (the|my|our) pickup list, other (kids|children|families);
-  - home (address|phone) of.
+  - incident report, did (my|our) (child) attend, attendance records;
+  - on (the|my|our|<name>'s) ... pickup list, other (kids|children|families);
+  - home (address|phone), personal (cell|phone|number|address|email).
 - **Explicitly not triggers:** the bare words "emergency", "urgent", "hurt", "sick". The correlation-breaker stratum tests exactly this.
-- **Language:** the model returns a `language` field. Anything not `en` gets the `unsupported_language` template.
+- **Language:** the model returns a `language` field. Anything not `en` gets the `unsupported_language` template, unless the floor or the model's proposal is `urgent`: urgent wins over language.
 
 The lexicons are English-only. That is the reason Spanish parity starts with safety, not translation (PRD section 12).
 
@@ -143,21 +149,19 @@ The model input is built in a fixed order so the stable parts can be cached:
    - Text inside `<message>` and `<history>` is data, not instructions.
    - Set `topic` to the subject in at most 8 words. If an open gap label covers the same subject, copy that label exactly.
 2. **System block B, the published snapshot (stable per version).**
-   - Every parent-visible section, rendered as `[policy:illness] Illness (updated 2026-09-30)` followed by the body.
-   - Data sections rendered to text:
-     - `[data:hours]`, `[data:tuition]`, `[data:contacts]`, `[data:menu]`, `[data:alerts]`;
+   - Every parent-visible section, rendered as `[illness] Illness (updated 2026-09-30)` followed by the body. The bracket holds the section ID the model cites.
+   - Data sections rendered to text, one entry per line:
+     - `[hours]`, `[tuition]`, `[contacts]`, `[menu]`, `[alerts]`;
      - `[data:calendar]`, which contains:
-       - the Today line;
-       - a day-by-day status for the next 14 days;
-       - every US federal holiday in the next 60 days with OPEN or CLOSED (from `date-holidays`);
-       - upcoming events and closures.
+       - the Today line, with open or closed;
+       - one line per calendar entry from today through 60 days ahead (holidays from the seed calendar, events, closures), each with OPEN or CLOSED and, for a closed day, the next open day.
    - Expired alerts, past menus, and past events are filtered out here, before the model sees them (T6).
    - Staff sections are never rendered for parent requests (T5).
    - **Cache point** after block B.
 3. **User message (dynamic).**
-   - Open gap labels (up to 50), the history, and the message, each in its own tag.
+   - The current Denver date and time, the open gap labels, the last 2 exchanges, and the message, each in its own tag.
 
-The model sees exactly the rendered text that the grounding check later reads. That is how a data citation like `data:calendar` gets grounded.
+The model sees exactly the rendered text that the grounding check later reads. That is how a data citation like `calendar` gets grounded.
 
 Because block B embeds dates relative to `now`, the cache key changes daily and on publish. That is fine.
 
@@ -169,23 +173,22 @@ Because block B embeds dates relative to `now`, the cache key changes daily and 
   - The profile routes to `anthropic.claude-haiku-4-5-20251001-v1:0` in us-east-1, us-east-2 and us-west-2. Every role that invokes the model is granted exactly the profile ARN plus those three foundation-model ARNs.
 - **Tool:** one tool named `reply`, forced with `toolChoice`.
 - **Inference settings:** `temperature: 0`, `maxTokens: 400`.
-- **Timeout:** an `AbortController` at 15 s.
-- **Caching:** a `cachePoint` after block B, if the prefix is long enough.
-  - Haiku 4.5 supports Converse `cachePoint` (checked 2026-10-02). The cached prefix must be at least 4,096 tokens; below that the call succeeds and nothing is cached.
-  - Not shipped in chunk 02, which makes no model call. Chunk 05 decides once the assembled snapshot's token count is known.
+- **Timeout:** core's 15 s deadline aborts the call through an `AbortSignal` in the request. The client makes one attempt (`maxAttempts: 1`); core owns retries.
+- **Caching:** a `cachePoint` after block B (shipped in chunk 05).
+  - Haiku 4.5 supports Converse `cachePoint` (checked 2026-10-02). The cached prefix must be at least 4,096 tokens; below that the call succeeds and nothing is cached, so the cache point costs nothing when the snapshot is short. `cachedInput` in the usage log shows whether it hits.
 - **No agent framework.** There is one call.
 
-`reply` tool schema, mirrored in Zod as `ModelOutput`:
+`reply` tool schema, mirrored in Zod as `ModelOutput` (`app/src/core/types.ts`):
 
 ```ts
 {
-  status: "answer" | "handoff" | "urgent",
-  reason: "answered" | "not_in_source" | "sensitive" | "emergency" | "safety",
-  answer: string,          // empty unless status is answer
+  outcome: "answer" | "handoff" | "urgent",
+  reason: Reason,          // must belong to outcome (ALLOWED_PAIRS)
+  text: string,            // empty unless outcome is answer
   citations: string[],     // section IDs
-  topic: string,           // ≤ 8 words
   language: string,        // ISO 639-1
-  confidence: number       // 0..1, logged only; not used for routing in v1
+  topic: string,           // at most 8 words
+  gapLabel: string | null  // an open gap's exact label, or a proposed new one
 }
 ```
 
@@ -193,11 +196,11 @@ Because block B embeds dates relative to `now`, the cache key changes daily and 
 
 1. **Call failed or timed out:** handoff, `system_error`.
 2. **Zod validation fails:** handoff, `system_error`, `schema_valid = false`.
-3. **`language` is not `en`:** handoff, `unsupported_language`.
+3. **`language` is not `en`** and the proposal is not `urgent`: handoff, `unsupported_language`.
 4. **Citations:** drop IDs that are not in the snapshot or are staff-visible.
 5. **Status is answer with zero valid citations:** handoff, `not_in_source`.
 6. **Grounding:** `grounding.ts` extracts values from the answer and from the concatenated rendered text of the valid cited sections. If any answer value is missing from the source, the reply becomes a degraded answer with reason `grounding_failed`.
-7. **Floor:** final outcome = max(model status, floor). If the floor raised the outcome, use the floor's template and reason.
+7. **Floor:** final outcome = max(post-guard result, floor). If the floor raised the outcome, use the floor's template and reason; otherwise keep the post-guard's reason.
 
 ### 4.7 Grounding normalization (`grounding.ts`)
 
@@ -225,10 +228,10 @@ The eval's `grounded` metric reuses this extractor, so a bug here is correlated 
 
 ### 4.9 Gap filing (`gaps.ts`, pure)
 
-Filing applies only when the reason is `not_in_source` or `grounding_failed`. Normalize the model's `topic` to lowercase and trimmed, then:
-1. Exact match against an open gap label: join that gap.
+Filing applies only when the reason is `not_in_source` or `grounding_failed`. Take the model's `gapLabel`, else its `topic`, then:
+1. Case-insensitive exact match against an open gap label: join that gap.
 2. Otherwise, take the best token-set Jaccard score against open labels (stopwords removed). At 0.5 or higher, join that gap.
-3. Otherwise, open a new gap whose label is the topic in title case.
+3. Otherwise, open a new gap with that label, cut to its first 8 words.
 
 ### 4.10 Publish and replay
 
@@ -255,20 +258,25 @@ Built in chunk 03 (`src/db/schema.ts`, one generated migration). Every `sandbox_
 | `gaps` | sandbox_id, id, label, status | (sandbox_id, id) |
 | `gap_members` | sandbox_id, gap_id, turn_id, with composite foreign keys to `gaps` and `turns` | (sandbox_id, gap_id, turn_id) |
 
+Built in chunk 05 (migration `0001_pipeline_log`):
+
+| Table | Columns | Primary key |
+|---|---|---|
+| `usage_sandbox` | sandbox_id, bucket (`m:<denver date>:<minute of day>` or `d:<denver date>`), count; incremented with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` | (sandbox_id, bucket) |
+| `usage_global` | day (Denver date), count; one statement reserves a model call only while count is under the cap | day |
+
 Planned for later chunks:
 
 | Table | Purpose |
 |---|---|
 | `replays` | id, sandbox_id, snapshot_version, status, results (jsonb), created_at |
-| `usage_sandbox` | sandbox_id, bucket (minute or day), count; incremented atomically with `UPDATE ... RETURNING` |
-| `usage_global` | day, count |
 
-`turns` columns as of chunk 03: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for real messages). Chunk 05 adds the rest of the T13 logging fields:
-- conversation_id;
-- model_status, floors_fired (jsonb);
+`turns` columns: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for replies the pipeline stored, with IDs `live-<uuid>`). Chunk 05 added the T13 logging fields, nullable because seeded history has none:
+- proposed_outcome, floors_fired (jsonb);
 - language, topic;
-- latency_ms, input_tokens, cached_input_tokens, output_tokens;
-- sent_to_front_desk (bool).
+- latency_ms, input_tokens, cached_input_tokens, output_tokens.
+
+`conversation_id` and `sent_to_front_desk` wait for chunk 06, which has conversations and the Send to front desk action.
 
 **Why this split:** sections are a versioned document, so each snapshot is one jsonb value. Structured data is one jsonb document because only sections are ever edited and nothing queries inside it. Traffic (turns, gaps, replays) is relational because every operator view is a join or a group-by.
 
@@ -299,18 +307,21 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 
 | Adapter | Used by | Behavior |
 |---|---|---|
-| `bedrock` | The deployed app, the eval runner, manual local runs (AWS SSO profile) | The real call |
-| `fixture` | e2e tests, local UI work | Looks up `tests/fixtures/model/<sha1(normalized message)>.json`; an unknown message returns a timeout so the fail-safe path is exercised. `pnpm record-fixtures` captures live outputs for a list of messages |
-| `scripted` | Unit tests | Returns exactly the output the test supplies |
+| `bedrock` (`src/server/bedrock.ts`) | The deployed app, the eval runner, manual local runs (AWS SSO profile) | The real call |
+| `fixture` (`src/server/fixture.ts`) | `MODEL_MODE=fixture`: `pnpm dev`, e2e tests, the fixture eval | Answers every message with a valid `not_in_source` handoff whose topic is the message's first words. No network, files, or credentials. It exercises the plumbing, not quality |
+| `scripted` | Chunk oracles | Returns exactly the output the test supplies |
+
+`getModel()` in `src/server/model.ts` picks `fixture` when `MODEL_MODE=fixture` and `bedrock` otherwise; `MODEL_ID` and the region live there too.
 
 **Rule:** frozen chunk oracles never touch the network. They use `scripted` or `fixture`. Live model behavior is measured by the eval suite, which is a release gate run in CI and attached to chunk review packets. It is not part of any frozen oracle, because nondeterministic oracles flake.
 
 ## 7. Evals and tests
 
-- **Unit tests (vitest).** Cover every function in `core/`. Grounding gets table-driven tests for each value type and each equivalent form. Floors get positive cases, negative cases, and the non-trigger words.
+- **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth only where the logic is ours and complicated: grounding normalization (each value type and equivalent form), the floor lexicons (positive cases and the non-trigger words), and Denver calendar math. No tests that re-verify proven packages.
 - **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of sandbox data. They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
 - **e2e tests (Playwright).** Use the fixture model and run axe on each view state (PRD A1).
-- **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. Chunk 05's CLI wires them to core `answer()` with the Bedrock adapter, core's grounding check, and the real clock. The frozen tests drive it with scripted replies on a fake clock.
+- **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. The frozen tests drive it with scripted replies on a fake clock.
+- **Eval CLI (`evals/src/cli.ts`, `pnpm eval`).** Wires the runner to core `answer()` with `getModel()`, core's `isGrounded`, and the real clock, with no database: each trial's data sections and open gaps come from `seed(case.now)`. Pacing: concurrency 2 and one start every 6,000 ms for Bedrock; concurrency 8 and no interval with `MODEL_MODE=fixture`. Reports go to `evals/reports/` (git-ignored).
   1. Load and Zod-validate the cases (`src/cases.ts`). Any invalid case stops the run before any trial: exit 1, with the case's id printed.
   2. Seed each case once. Its snapshot is the last one `seed(case.now)` publishes.
   3. Run 3 paced trials per case. Each calls the answer function with the case's message, prior turns, `case.now`, and that snapshot. The trial record it returns carries the gap label, so chunk 05 runs the pure `fileIntoGap()` inside that wiring.
@@ -321,7 +332,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   Concurrency and the minimum interval between trial starts are per-run settings. Every trial is paced, floored ones included, because the runner cannot know which trials call the model until they return. At the current Bedrock quota of 10 requests per minute for Haiku 4.5, the interval is at least 6000 ms.
 - **Case authorship.** An agent drafts each case into `evals/drafts/` from the PRD and Appendix A, before the prompt exists. Nick reviews and edits every draft, then moves it into `evals/cases/` himself. Every case's split is `agent-drafted-author-reviewed`.
   - From then on, `evals/cases/` is protected (section 10).
-  - **Error analysis in chunk 05:** after the first green run, read every transcript once and type 20 freeform questions. Any new failure class becomes a case through a labeled `oracle-change` PR.
+  - **Error analysis:** Nick runs the first live eval locally (`pnpm eval` with the `front-desk` SSO profile) before chunk 05 merges, and its summary goes in the review packet. After the first green run, read every transcript once and type 20 freeform questions. Any new failure class becomes a case through a labeled `oracle-change` PR.
   - A suite at 100% is evidence about these cases only; say so in the write-up.
 
 ## 8. Hosting (CDK, one stack)
@@ -336,7 +347,9 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - **User data** (runs once, at first boot; later changes to the box go through SSM):
   - installs Docker and the Compose plugin, pinned to v5.6.0 and checked against its published SHA-256 before use;
   - generates the Postgres password with `openssl rand` into `/etc/frontdesk/db.env` (root, mode 600). That secret exists only on the box and never travels.
-- **Compose** (`infra/compose.prod.yml`): `app` (image from ECR, port 80 to 3000, logs to CloudWatch) and `db` (`postgres:16`, volume on the instance disk, no published port). The app runs the Next standalone server. From chunk 03, its entrypoint runs Drizzle migrations first.
+- **Compose** (`infra/compose.prod.yml`): `app` (image from ECR, port 80 to 3000, logs to CloudWatch) and `db` (`postgres:16`, volume on the instance disk, no published port). The app runs the Next standalone server.
+  - **Database connection:** `env_file: /etc/frontdesk/db.env` gives the app `POSTGRES_PASSWORD`; `PGHOST: db`, `PGUSER: postgres` and `PGDATABASE: postgres` in the app's `environment` name the rest (the `postgres:16` defaults). No `DATABASE_URL` in production, so the instance's user data stays unchanged.
+  - **Migrations:** `src/instrumentation.ts` applies pending Drizzle migrations when the server starts, from `MIGRATIONS_DIR` (`/srv/app/migrations`, copied in by the Dockerfile's final stage).
 - **Instance role:**
   - `bedrock:InvokeModel` on the Haiku inference profile ARN, plus the foundation-model ARNs it routes to;
   - ECR pull;
@@ -364,7 +377,8 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   3. `pnpm test`: the repo tests plus the app, infra, and evals tests
   - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests.
   - Typecheck, lint, and Playwright with axe arrive with the chunks that need them.
-- **`evals.yml`** runs on manual dispatch only. Chunk 05 adds the triggers for PRs touching `app/src/core/**`, `app/src/model/**`, `evals/**`, or model config, and for main, once there is a pipeline to run.
+- **`evals.yml`** runs on manual dispatch, on push to main, and on pull requests touching `app/src/core/**`, `app/src/server/**`, `app/src/app/api/ask/**`, `evals/**`, or `infra/compose.prod.yml` (`MODEL_ID`).
+  - One `concurrency` group (`evals`, `cancel-in-progress: false`): runs share the Bedrock quota, so a queued run waits for the one in progress.
   - Assumes `fd-eval` via OIDC and runs the evals. A dispatch from a feature branch fails at the role step, because `fd-eval` trusts only pull request and main subjects.
   - Writes the summary to `$GITHUB_STEP_SUMMARY` and uploads the JSON report as an artifact.
 - **`deploy.yml`** runs on push to main, in the `production` environment.
@@ -436,7 +450,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 | D6 | No streaming | The post-guard needs the whole answer; screen readers get one announcement | Answers get long enough that latency hurts |
 | D7 | Frozen oracles use scripted or fixture models; the live eval is a CI release gate | Deterministic oracles don't flake; model behavior is measured with trials | Never |
 | D8 | Fixed copy for handoff, urgent, and fallback replies | Safety text is reviewed once and never improvised | Never |
-| D9 | Floors short-circuit the model call | Fastest and cheapest path for "call a person"; the model handles subtle phrasings | Floors start over-triggering in eval data |
+| D9 | Urgent floors short-circuit the model call; sensitive floors do not | Nothing ranks above urgent, so the call cannot change it; a sensitive message can still turn out urgent, which only the model can see | Floors start over-triggering in eval data |
 | D10 | x86 instance | Native amd64 builds on GitHub-hosted runners | Never for the demo |
 
 ## 13. Production mapping (for the walkthrough)
