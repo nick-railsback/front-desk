@@ -38,15 +38,19 @@ app/                    Next.js (App Router), TypeScript
     gaps.ts             pure gap matching
     types.ts            Section, Reply, Outcome, Reason, Model, Clock, ModelOutput (Zod)
     copy.ts             every user-facing string (A8)
+    operator.ts         the operator view's summary window, time ago, and unpublished-changes check
   src/server/           ask.ts (limits, storage, gap filing around answer()), model.ts (getModel, MODEL_ID),
                         adapters bedrock.ts and fixture.ts, clock.ts (the real clock),
-                        sandbox-cookie.ts (the fd_sandbox cookie and the x-fd-sandbox header)
+                        sandbox-cookie.ts (the fd_sandbox cookie and the x-fd-sandbox header),
+                        replay.ts (re-runs open gap questions after a publish)
   src/instrumentation.ts  applies migrations at server start
-  src/proxy.ts          first visit to /: creates the sandbox and sets its cookie on the page's response
+  src/proxy.ts          first visit to / or /operator: creates the sandbox and sets its cookie on the page's response
   src/db/               schema.ts, migrations/ (generated), sandbox.ts (all sandbox-scoped access, via forSandbox)
   src/seed/             seed(now): index.ts (the Seed type), center.ts, calendar.ts, sections.ts, history.ts, dates.ts
-  src/app/              routes: / (parent), /operator, /api/ask, /api/send, /api/health; globals.css (plain CSS)
+  src/app/              routes: / (parent), /operator, /api/ask, /api/send, /api/sections, /api/publish,
+                        /api/replay, /api/health; role-switcher (client); globals.css (plain CSS)
   src/app/parent/       the parent view's components: today-card, parent-view (client), reply, phone
+  src/app/operator/     the operator view: page (server), operator-view, questions, editor (client)
   tests/unit/           vitest, no network
   tests/e2e/            Playwright + axe, fixture model with scripted replies (`fixture:<reason> `)
 evals/
@@ -237,12 +241,13 @@ Filing applies only when the reason is `not_in_source` or `grounding_failed`. Ta
 
 ### 4.10 Publish and replay
 
-1. **Publish** copies the draft into `snapshots` as version N+1 inside a transaction.
-2. In the same request, the server records a `replays` row, starts the replay in-process (not awaited), and returns the replay ID.
-3. **The replay** runs each open gap's 20 most recent questions through `answer()` against the new snapshot, with concurrency 5. It writes results into the `replays` row and marks fully answered gaps `resolved`.
-4. **The UI** polls `/api/replays/:id` every second.
+1. **Publish** (`POST /api/publish`) copies the draft into `snapshots` as version N+1 and records a `replays` row, in one transaction, so a failed publish creates neither. A section that is new or differs from version N's copy carries today's Denver date; every other section keeps N's.
+2. After the transaction, the route starts the replay in-process (not awaited) and returns.
+3. **The replay** (`server/replay.ts`) runs each open gap's 20 most recent questions through `answer()` against the new snapshot, one at a time. Each call is reserved against the global daily cap, as `ask()` reserves it; a question the cap has no room for makes no call and counts as not answered. Nothing is stored as a turn, filed into a gap, or counted against the sandbox's limits. After each question it records progress in the `replays` row; at the end it records each gap's result and marks fully answered gaps `resolved`, in one transaction.
+4. **Pacing.** The account allows 10 model calls a minute, so a burst comes back throttled. Sequential calls, `answer()`'s own throttle retry, and one further 6 s wait and re-run for a question still throttled keep a live replay near that rate: 16 seeded questions in about 96 s, 60 in about 6 minutes (PRD O11).
+5. **The UI** polls `GET /api/replay` (no ID: the sandbox's latest replay) right after publishing and then every second, showing `<completed> of <total>`, and refreshes the page when the replay is done.
 
-This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue.
+This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay leaves its row `running`; the next publish starts a new one.
 
 ## 5. Data model (Drizzle, Postgres 16)
 
@@ -267,11 +272,13 @@ Built in chunk 05 (migration `0001_pipeline_log`):
 | `usage_sandbox` | sandbox_id, bucket (`m:<denver date>:<minute of day>` or `d:<denver date>`), count; incremented with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` | (sandbox_id, bucket) |
 | `usage_global` | day (Denver date), count; one statement reserves a model call only while count is under the cap | day |
 
-Planned for later chunks:
+Built in chunk 07 (migration `0003_replays`):
 
-| Table | Purpose |
-|---|---|
-| `replays` | id, sandbox_id, snapshot_version, status, results (jsonb), created_at |
+| Table | Columns | Primary key |
+|---|---|---|
+| `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at | id |
+
+Chunk 07 also gives `gaps.status` a second value, `resolved`, for a gap whose replayed questions were all answered. A question asked after that opens a new gap, because gap filing joins open gaps only.
 
 `turns` columns: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for replies the pipeline stored, with IDs `live-<uuid>`). Chunk 05 added the T13 logging fields, nullable because seeded history has none:
 - proposed_outcome, floors_fired (jsonb);
@@ -299,7 +306,7 @@ Seed = {
   snapshots: [{ version, sections: Section[] }],   // Section: { id, title, visibility: "parent" | "staff", updatedOn, text }
   draft:     { sections: Section[] },
   questions: [{ id, text, askedAt, reply: { text, outcome, reason, snapshotVersion, citations: [{ sectionId }] } }],
-  gaps:      [{ id, label, status: "open", questionIds: string[] }]
+  gaps:      [{ id, label, status: "open" | "resolved", questionIds: string[] }]   // the seed writes "open" only
 }
 ```
 
@@ -310,7 +317,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 | Adapter | Used by | Behavior |
 |---|---|---|
 | `bedrock` (`src/server/bedrock.ts`) | The deployed app, the eval runner, manual local runs (AWS SSO profile) | The real call |
-| `fixture` (`src/server/fixture.ts`) | `MODEL_MODE=fixture`: `pnpm dev`, e2e tests, the fixture eval | Answers every message with a valid `not_in_source` handoff whose topic is the message's first words. A message starting with `fixture:<reason> ` gets a scripted output for that reason instead (`answered`, `grounding_failed`, `not_in_source`, `unsupported_language`, `system_error`), so the e2e tests reach every reason. No network, files, or credentials. It exercises the plumbing, not quality |
+| `fixture` (`src/server/fixture.ts`) | `MODEL_MODE=fixture`: `pnpm dev`, e2e tests, the fixture eval | Answers every message with a valid `not_in_source` handoff whose topic is the message's first words. A message starting with `fixture:<reason> ` gets a scripted output for that reason instead (`answered`, `grounding_failed`, `not_in_source`, `unsupported_language`, `system_error`), so the e2e tests reach every reason. An unscripted message that a parent-visible section of the snapshot holds word for word is answered from that section, citing it, so publishing a section can make a replay answer. No network, files, or credentials. It exercises the plumbing, not quality |
 | `scripted` | Chunk oracles | Returns exactly the output the test supplies |
 
 `getModel()` in `src/server/model.ts` picks `fixture` when `MODEL_MODE=fixture` and `bedrock` otherwise; `MODEL_ID` and the region live there too.

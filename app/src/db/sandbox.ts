@@ -5,14 +5,15 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate as runMigrations } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import type { AnswerRecord, Outcome, Reason, Reply, Section } from '../core/types';
-import { seed, type Seed } from '../seed';
+import { type Gap, seed, type Seed } from '../seed';
+import { denverDate } from '../seed/dates';
 import * as schema from './schema';
-import { drafts, gapMembers, gaps, sandboxes, snapshots, structuredData, turns, usageGlobal, usageSandbox } from './schema';
+import { drafts, gapMembers, gaps, type ReplayResult, replays, sandboxes, snapshots, structuredData, turns, usageGlobal, usageSandbox } from './schema';
 
 // Any constant works; it only has to be the same in every process that migrates.
 const MIGRATION_LOCK = 314159;
@@ -130,7 +131,7 @@ export function forSandbox(sandboxId: string) {
         gaps: gapRows.map((g) => ({
           id: g.id,
           label: g.label,
-          status: g.status as 'open',
+          status: g.status as Gap['status'],
           questionIds: memberRows.filter((m) => m.gapId === g.id).map((m) => m.turnId),
         })),
       };
@@ -255,8 +256,158 @@ export function forSandbox(sandboxId: string) {
         usage: { input: t.inputTokens ?? 0, cachedInput: t.cachedInputTokens ?? 0, output: t.outputTokens ?? 0 },
       }));
     },
+
+    // Every question the sandbox holds, seeded and live, newest first.
+    // Replayed replies are never turns, so they are never here.
+    async questions(): Promise<OperatorQuestion[]> {
+      const rows = await db().select().from(turns).where(eq(turns.sandboxId, sandboxId)).orderBy(desc(turns.createdAt));
+      return rows.map((t) => ({
+        id: t.id,
+        message: t.message,
+        askedAt: t.createdAt.toISOString(),
+        reply: { text: t.answerText, outcome: t.outcome as Outcome, reason: t.reason as Reason, snapshotVersion: t.snapshotVersion, citations: t.citations },
+        sentToFrontDesk: t.sentToFrontDesk !== null,
+      }));
+    },
+
+    // Every gap with its member questions, newest first.
+    async gapsWithQuestions(): Promise<OperatorGap[]> {
+      const d = db();
+      const [gapRows, memberRows] = await Promise.all([
+        d.select().from(gaps).where(eq(gaps.sandboxId, sandboxId)),
+        d
+          .select({ gapId: gapMembers.gapId, id: turns.id, message: turns.message, createdAt: turns.createdAt })
+          .from(gapMembers)
+          .innerJoin(turns, and(eq(turns.sandboxId, gapMembers.sandboxId), eq(turns.id, gapMembers.turnId)))
+          .where(eq(gapMembers.sandboxId, sandboxId))
+          .orderBy(desc(turns.createdAt)),
+      ]);
+      return gapRows.map((g) => ({
+        id: g.id,
+        label: g.label,
+        status: g.status as Gap['status'],
+        questions: memberRows.filter((m) => m.gapId === g.id).map((m) => ({ id: m.id, message: m.message, askedAt: m.createdAt.toISOString() })),
+      }));
+    },
+
+    // Every published snapshot, oldest first: a reply's citations are drawn
+    // from the version it recorded.
+    async snapshots(): Promise<{ version: number; sections: Section[] }[]> {
+      const rows = await db().select().from(snapshots).where(eq(snapshots.sandboxId, sandboxId)).orderBy(snapshots.version);
+      return rows.map((s) => ({ version: s.version, sections: s.sections }));
+    },
+
+    async draft(): Promise<Section[]> {
+      const rows = await db().select({ sections: drafts.sections }).from(drafts).where(eq(drafts.sandboxId, sandboxId));
+      if (rows.length === 0) throw new Error(`sandbox ${sandboxId} holds no draft`);
+      return rows[0].sections;
+    },
+
+    // Puts one section into the draft. A null ID adds a new section dated
+    // `today`; any other ID replaces that section's title, visibility and
+    // text, keeping its date until a publish restamps it. Null when the ID
+    // names no draft section.
+    async saveSection(input: Omit<Section, 'updatedOn' | 'id'> & { id: string | null }, today: string): Promise<Section | null> {
+      return db().transaction(async (tx) => {
+        const [row] = await tx.select({ sections: drafts.sections }).from(drafts).where(eq(drafts.sandboxId, sandboxId)).for('update');
+        if (!row) throw new Error(`sandbox ${sandboxId} holds no draft`);
+        const old = input.id === null ? null : row.sections.find((s) => s.id === input.id);
+        if (old === undefined) return null;
+        const section: Section = { ...input, id: old?.id ?? randomUUID(), updatedOn: old?.updatedOn ?? today };
+        const sections = old ? row.sections.map((s) => (s === old ? section : s)) : [...row.sections, section];
+        await tx.update(drafts).set({ sections, updatedAt: new Date() }).where(eq(drafts.sandboxId, sandboxId));
+        return section;
+      });
+    },
+
+    // Publishes the draft as snapshot N+1 and opens its replay, in one
+    // transaction, so a failure creates neither. A section that is new or
+    // differs from N's copy carries today's Denver date; every other section
+    // keeps N's. The draft takes the same dates, so it matches N+1 exactly.
+    async publish(now: Date): Promise<{ version: number; replayId: string; total: number }> {
+      return db().transaction(async (tx) => {
+        const [draftRow] = await tx.select({ sections: drafts.sections }).from(drafts).where(eq(drafts.sandboxId, sandboxId)).for('update');
+        const [latest] = await tx.select().from(snapshots).where(eq(snapshots.sandboxId, sandboxId)).orderBy(desc(snapshots.version)).limit(1);
+        if (!draftRow || !latest) throw new Error(`sandbox ${sandboxId} holds no draft or snapshot`);
+        const today = denverDate(now);
+        const sections = draftRow.sections.map((s) => {
+          const old = latest.sections.find((o) => o.id === s.id);
+          const same = old && old.title === s.title && old.visibility === s.visibility && old.text === s.text;
+          return { ...s, updatedOn: same ? old.updatedOn : today };
+        });
+        const version = latest.version + 1;
+        await tx.insert(snapshots).values({ sandboxId, version, sections, publishedAt: now });
+        await tx.update(drafts).set({ sections, updatedAt: now }).where(eq(drafts.sandboxId, sandboxId));
+        const counts = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(gapMembers)
+          .innerJoin(gaps, and(eq(gaps.sandboxId, gapMembers.sandboxId), eq(gaps.id, gapMembers.gapId)))
+          .where(and(eq(gapMembers.sandboxId, sandboxId), eq(gaps.status, 'open')))
+          .groupBy(gaps.id);
+        const total = counts.reduce((sum, c) => sum + Math.min(REPLAY_PER_GAP, c.count), 0);
+        const [replay] = await tx
+          .insert(replays)
+          .values({ sandboxId, snapshotVersion: version, status: total > 0 ? 'running' : 'done', completed: 0, total, results: [], createdAt: now })
+          .returning({ id: replays.id });
+        return { version, replayId: replay.id, total };
+      });
+    },
+
+    // Each open gap with its most recent questions, the ones a replay re-runs.
+    async replayQuestions(): Promise<{ id: string; label: string; messages: string[] }[]> {
+      const open = (await this.gapsWithQuestions()).filter((g) => g.status === 'open');
+      return open.map((g) => ({ id: g.id, label: g.label, messages: g.questions.slice(0, REPLAY_PER_GAP).map((q) => q.message) }));
+    },
+
+    async recordReplayProgress(replayId: string, completed: number): Promise<void> {
+      await db()
+        .update(replays)
+        .set({ completed })
+        .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)));
+    },
+
+    // Ends a replay with each gap's result, and resolves the gaps it
+    // resolved, in one transaction.
+    async finishReplay(replayId: string, results: ReplayResult[]): Promise<void> {
+      const replayed = results.reduce((sum, r) => sum + r.replayed, 0);
+      const resolved = results.filter((r) => r.resolved).map((r) => r.gapId);
+      await db().transaction(async (tx) => {
+        await tx
+          .update(replays)
+          .set({ status: 'done', completed: replayed, total: replayed, results })
+          .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)));
+        if (resolved.length > 0) {
+          await tx
+            .update(gaps)
+            .set({ status: 'resolved' })
+            .where(and(eq(gaps.sandboxId, sandboxId), inArray(gaps.id, resolved)));
+        }
+      });
+    },
+
+    async failReplay(replayId: string): Promise<void> {
+      await db()
+        .update(replays)
+        .set({ status: 'failed' })
+        .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)));
+    },
+
+    // The sandbox's latest replay, or null before its first publish.
+    async latestReplay(): Promise<Replay | null> {
+      const [row] = await db().select().from(replays).where(eq(replays.sandboxId, sandboxId)).orderBy(desc(replays.snapshotVersion)).limit(1);
+      return row ? { status: row.status as Replay['status'], completed: row.completed, total: row.total, results: row.results } : null;
+    },
   };
 }
+
+// A gap's questions a replay re-runs: its most recent 20 (PRD O10).
+const REPLAY_PER_GAP = 20;
+
+export type OperatorQuestion = { id: string; message: string; askedAt: string; reply: Reply; sentToFrontDesk: boolean };
+
+export type OperatorGap = { id: string; label: string; status: Gap['status']; questions: { id: string; message: string; askedAt: string }[] };
+
+export type Replay = { status: 'running' | 'done' | 'failed'; completed: number; total: number; results: ReplayResult[] };
 
 export type StoredReply = {
   id: string;

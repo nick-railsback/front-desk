@@ -55,7 +55,7 @@ function Chip({ section }: { section: CitedSection }) {
   return (
     <li>
       <button type="button" className="chip" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>
-        <span className="chip-title">{section.title}</span>
+        <span className="chip-title">{section.title}</span>{' '}
         <span className="chip-meta">{section.kind === 'policy' ? PARENT.updated(longDate(section.updatedOn)) : PARENT.fromRecords}</span>
       </button>
       <div id={panel} className="section-text" hidden={!open}>
