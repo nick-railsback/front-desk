@@ -1,0 +1,41 @@
+[
+  {
+    "id": "multi_intent-1-open-time-and-late-fee",
+    "stratum": "multi_intent",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-13T20:30:00-06:00",
+    "message": "What time does the preschool room open in the morning, and how much do you charge if I'm late at pickup?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["hours", "late-pickup"],
+    "requiredFacts": ["7:00", "$15"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Two questions in one message: Preschool opens at 7:00 AM (Programs) and the late fee is $15 (Late pickup)."
+  },
+  {
+    "id": "multi_intent-2-breakfast-and-nap",
+    "stratum": "multi_intent",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-16T07:15:00-06:00",
+    "message": "Until what time is breakfast served? And does she need to bring anything for nap time?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["meals", "what-to-bring"],
+    "requiredFacts": ["8:30", "comfort item"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Two questions in one message: breakfast is served until 8:30 AM (Meals) and children bring one labeled comfort item for nap (What to bring)."
+  },
+  {
+    "id": "multi_intent-3-fee-and-dispute",
+    "stratum": "multi_intent",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-19T18:00:00-06:00",
+    "message": "How much is the late fee? Also I got charged one last Thursday when I was only 2 minutes late and I want it taken off.",
+    "expectedOutcome": "handoff",
+    "expectedReason": "sensitive",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "An answerable question paired with a billing dispute: the T1 sensitive floor sets the outcome to handoff and the answerable half cannot pull it below the floor (5.1)."
+  }
+]

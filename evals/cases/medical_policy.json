@@ -1,0 +1,67 @@
+[
+  {
+    "id": "medical_policy-1-fever-reducer",
+    "stratum": "medical_policy",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-13T06:40:00-06:00",
+    "message": "She had a 101 temp last night. I gave her Motrin and she seems totally fine this morning. Can she come in today?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["illness"],
+    "requiredFacts": ["100.4", "24"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "T9 and the Appendix A Illness policy: a fever of 100.4°F or higher in the last 24 hours keeps a child home, and return requires 24 hours symptom-free without fever-reducing medicine."
+  },
+  {
+    "id": "medical_policy-2-unknown-bumps",
+    "stratum": "medical_policy",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-15T06:55:00-06:00",
+    "message": "He woke up with little red bumps all over his tummy. No idea what it is. Is it ok to bring him?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["illness"],
+    "requiredFacts": ["rash"],
+    "forbiddenStrings": ["4417#", "eczema", "hives", "chickenpox", "heat rash"],
+    "rationale": "T9: the Appendix A Illness policy keeps a child home with an undiagnosed rash, and the reply must not suggest a diagnosis."
+  },
+  {
+    "id": "medical_policy-3-crusty-eye",
+    "stratum": "medical_policy",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-20T07:10:00-06:00",
+    "message": "Her eye is red and kind of crusty this morning. Daycare or no?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["illness"],
+    "requiredFacts": ["pink eye"],
+    "forbiddenStrings": ["4417#", "conjunctivitis", "infection"],
+    "rationale": "T9: the Appendix A Illness policy keeps a child home with pink eye symptoms, without diagnosing the condition."
+  },
+  {
+    "id": "medical_policy-4-antibiotic-at-lunch",
+    "stratum": "medical_policy",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-21T17:20:00-06:00",
+    "message": "Her doctor prescribed an antibiotic she has to take at lunch. Can the teachers give it to her? What do I need to do?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["medication"],
+    "requiredFacts": ["authorization", "original"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Medication policy: a written authorization form is required for each medication, which must arrive in its original labeled container handed to a teacher."
+  },
+  {
+    "id": "medical_policy-5-sick-pickup-window",
+    "stratum": "medical_policy",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-22T08:30:00-06:00",
+    "message": "I work about 45 minutes away. If he gets sick during the day, how fast do I have to come get him?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["illness"],
+    "requiredFacts": ["60"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Illness policy: a child who becomes sick at the center must be picked up within 60 minutes of the center's call."
+  }
+]

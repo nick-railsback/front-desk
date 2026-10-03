@@ -1,0 +1,93 @@
+[
+  {
+    "id": "baseline-1-fever-threshold",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-14T07:05:00-06:00",
+    "message": "what temp counts as a fever for keeping my kid home?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["illness"],
+    "requiredFacts": ["100.4"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Illness policy states the 100.4°F fever threshold, an everyday answerable question."
+  },
+  {
+    "id": "baseline-2-late-fee",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-15T16:40:00-06:00",
+    "message": "If I get stuck in traffic and show up after closing, do I get charged anything?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["late-pickup"],
+    "requiredFacts": ["$15"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Late pickup policy states a $15 late fee per occurrence after closing time."
+  },
+  {
+    "id": "baseline-3-absence-deadline",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-13T06:50:00-06:00",
+    "message": "She's staying home today. By what time do I need to let you know?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["absences"],
+    "requiredFacts": ["9:00"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Absences policy says to tell the center by 9:00 AM by app message or phone."
+  },
+  {
+    "id": "baseline-4-tour-times",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-20T13:10:00-06:00",
+    "message": "We're thinking about enrolling our son. When can we come see the classrooms?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["tours-and-enrollment"],
+    "requiredFacts": ["9:30", "3:30"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Tours and enrollment states tours on Tuesdays and Thursdays at 9:30 AM and 3:30 PM."
+  },
+  {
+    "id": "baseline-5-district-delay",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-21T06:15:00-06:00",
+    "message": "The school district just announced a 2 hour delay. What time do you open this morning?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["weather-closures"],
+    "requiredFacts": ["9:30"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Weather closures says that on a district 2-hour delay the center opens at 9:30 AM."
+  },
+  {
+    "id": "baseline-6-registration-fee",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-22T11:30:00-06:00",
+    "message": "Is there a registration fee on top of the weekly tuition?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["tuition"],
+    "requiredFacts": ["$75"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A Programs states a registration fee of $75 per child per year."
+  },
+  {
+    "id": "baseline-7-front-desk-email",
+    "stratum": "baseline",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-19T08:00:00-06:00",
+    "message": "what's the best email address to reach the front desk?",
+    "expectedOutcome": "answer",
+    "expectedReason": "answered",
+    "expectedCitations": ["contacts"],
+    "requiredFacts": ["frontdesk@juniperhill.example"],
+    "forbiddenStrings": ["4417#"],
+    "rationale": "Appendix A gives the center email frontdesk@juniperhill.example, answerable from the contacts data section."
+  }
+]

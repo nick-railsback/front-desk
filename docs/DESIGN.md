@@ -48,10 +48,13 @@ app/                    Next.js (App Router), TypeScript
   tests/e2e/            Playwright + axe, fixture model
   tests/fixtures/model/ recorded model outputs for e2e
 evals/
-  cases/                eval cases (JSON). Protected oracle data.
-  run.ts                runner: calls core answer() with the Bedrock adapter
-  metrics.ts
-  reports/              generated; only latest.md is committed
+  src/cases.ts          case schema and loader; every problem names its case
+  src/metrics.ts        gated and reported metrics. Pure
+  src/runner.ts         runEval: validate, seed per case, paced trials, metrics, report
+  drafts/               agent-drafted cases awaiting Nick's review; empty once he moves them
+  cases/                eval cases (JSON), reviewed. Protected oracle data.
+  tests/                vitest, scripted replies on a fake clock, no network
+  reports/              generated: report.json and summary.md. The CLI that writes them arrives in chunk 05
 infra/                  CDK app (TypeScript), one stack
   bin/                  front-desk.ts, the CDK entry point
   lib/                  front-desk-stack.ts, the stack
@@ -307,16 +310,17 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - **Unit tests (vitest).** Cover every function in `core/`. Grounding gets table-driven tests for each value type and each equivalent form. Floors get positive cases, negative cases, and the non-trigger words.
 - **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of sandbox data. They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
 - **e2e tests (Playwright).** Use the fixture model and run axe on each view state (PRD A1).
-- **Eval runner (`evals/run.ts`).**
-  1. Load and Zod-validate the cases.
-  2. For each case, run 3 trials: build the snapshot with `seed(case.now)`, call `answer()` with Bedrock, then run the pure `fileIntoGap()` for `gap_filing` cases.
-  3. Compute the PRD Q4 and Q5 metrics.
-  4. Write the JSON report and `reports/latest.md`.
-  5. Exit 1 if any gated metric is below 1.00.
+- **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. Chunk 05's CLI wires them to core `answer()` with the Bedrock adapter, core's grounding check, and the real clock. The frozen tests drive it with scripted replies on a fake clock.
+  1. Load and Zod-validate the cases (`src/cases.ts`). Any invalid case stops the run before any trial: exit 1, with the case's id printed.
+  2. Seed each case once. Its snapshot is the last one `seed(case.now)` publishes.
+  3. Run 3 paced trials per case. Each calls the answer function with the case's message, prior turns, `case.now`, and that snapshot. The trial record it returns carries the gap label, so chunk 05 runs the pure `fileIntoGap()` inside that wiring.
+  4. Compute the PRD Q4 and Q5 metrics, overall and per stratum (`src/metrics.ts`).
+  5. Write `report.json` and `summary.md` to the output directory.
+  6. Exit 1 if any gated metric is below 1.00.
 
-  Concurrency is 6. The run is budgeted at about 144 calls.
-- **Case authorship.** Nick writes or edits every case from the PRD and Appendix A, before the prompt exists.
-  - Once chunk 04 freezes, `evals/cases/` is protected (section 10).
+  Concurrency and the minimum interval between trial starts are per-run settings. Every trial is paced, floored ones included, because the runner cannot know which trials call the model until they return. At the current Bedrock quota of 10 requests per minute for Haiku 4.5, the interval is at least 6000 ms.
+- **Case authorship.** An agent drafts each case into `evals/drafts/` from the PRD and Appendix A, before the prompt exists. Nick reviews and edits every draft, then moves it into `evals/cases/` himself. Every case's split is `agent-drafted-author-reviewed`.
+  - From then on, `evals/cases/` is protected (section 10).
   - **Error analysis in chunk 05:** after the first green run, read every transcript once and type 20 freeform questions. Any new failure class becomes a case through a labeled `oracle-change` PR.
   - A suite at 100% is evidence about these cases only; say so in the write-up.
 
@@ -357,11 +361,11 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - **`ci.yml`** runs on every push (any branch) and every PR:
   1. `pnpm install --frozen-lockfile`
   2. gitleaks over full history (pinned binary)
-  3. `pnpm test`: the repo tests plus the app and infra unit tests
+  3. `pnpm test`: the repo tests plus the app, infra, and evals tests
   - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests.
   - Typecheck, lint, and Playwright with axe arrive with the chunks that need them.
-- **`evals.yml`** runs on PRs touching `app/src/core/**`, `app/src/model/**`, `evals/**`, or model config; on main; and on manual dispatch.
-  - Assumes `fd-eval` via OIDC and runs the evals.
+- **`evals.yml`** runs on manual dispatch only. Chunk 05 adds the triggers for PRs touching `app/src/core/**`, `app/src/model/**`, `evals/**`, or model config, and for main, once there is a pipeline to run.
+  - Assumes `fd-eval` via OIDC and runs the evals. A dispatch from a feature branch fails at the role step, because `fd-eval` trusts only pull request and main subjects.
   - Writes the summary to `$GITHUB_STEP_SUMMARY` and uploads the JSON report as an artifact.
 - **`deploy.yml`** runs on push to main, in the `production` environment.
   1. Assume `fd-deploy` via OIDC.
@@ -389,7 +393,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 | Model API key | None exists. The instance role and the OIDC roles hold short-lived credentials |
 | Local AWS credentials | IAM Identity Center profiles only. No IAM users with access keys. Root has MFA and no keys |
 | Secret scanning | `lefthook` pre-commit runs gitleaks on staged changes; CI runs gitleaks on full history. Don't rely on GitHub's own scanning for a private personal repo |
-| Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook: shell writes into `evals/cases/` are caught by `oracle-guard.yml` in CI and by the frozen oracle's hash pin. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. A local env template, if one is added, is named `env.example`, without a leading dot, so the deny rules don't hide it. None exists yet: the only local variable, `DATABASE_URL`, is documented in `infra/compose.dev.yml` |
+| Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook, so the deny rules cover the Edit and Write tools only and a shell command could still write under `evals/cases/`. `oracle-guard.yml` catches that on pull requests, but chunks merge to main without a pull request, so the guard does not fire on chunk work; there Nick's diff review is the check. No frozen oracle's hash pin covers it, because `evals/cases/` is under no chunk's `test_paths`. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. A local env template, if one is added, is named `env.example`, without a leading dot, so the deny rules don't hide it. None exists yet: the only local variable, `DATABASE_URL`, is documented in `infra/compose.dev.yml` |
 | Supply chain | pnpm 11.9.0, which doesn't run dependency install scripts unless allowed in `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 ignores `onlyBuiltDependencies`). `allowBuilds` allows `lefthook` and denies `esbuild` (`esbuild: false`): `drizzle-kit` depends on it, pnpm 11 refuses an install whose build scripts are neither allowed nor denied, and `drizzle-kit generate` works without its install script. `minimumReleaseAge: 1440` in the same file. Lockfile committed. Actions pinned by SHA |
 | Abuse and cost | Rate limits checked in `src/db/sandbox.ts` before any model call (PRD S6); `maxTokens` 400; the global daily cap; the budget alert |
 | Errors | Next.js error boundaries and API routes return generic messages; details go to logs only |

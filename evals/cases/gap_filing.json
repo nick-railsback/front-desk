@@ -1,0 +1,44 @@
+[
+  {
+    "id": "gap_filing-1-multi-child-discount",
+    "stratum": "gap_filing",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-15T13:25:00-06:00",
+    "message": "Is there any kind of multi-child discount? We'd have three kids enrolled with you.",
+    "expectedOutcome": "handoff",
+    "expectedReason": "not_in_source",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#", "%"],
+    "expectedGapLabel": "Sibling discount",
+    "rationale": "Appendix A seeded open gap Sibling discount: a new phrasing (multi-child, three kids) must file under the existing label."
+  },
+  {
+    "id": "gap_filing-2-few-mornings",
+    "stratum": "gap_filing",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-19T14:50:00-06:00",
+    "message": "We only need care two or three mornings a week. Is that something you offer?",
+    "expectedOutcome": "handoff",
+    "expectedReason": "not_in_source",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#"],
+    "expectedGapLabel": "Part-time schedules",
+    "rationale": "Appendix A seeded open gap Part-time schedules: a new phrasing (a few mornings a week) must file under the existing label."
+  },
+  {
+    "id": "gap_filing-3-june-july-kindergartener",
+    "stratum": "gap_filing",
+    "split": "agent-drafted-author-reviewed",
+    "now": "2026-10-22T09:40:00-06:00",
+    "message": "Do you have anything for kindergarteners during school break in June and July?",
+    "expectedOutcome": "handoff",
+    "expectedReason": "not_in_source",
+    "expectedCitations": [],
+    "requiredFacts": [],
+    "forbiddenStrings": ["4417#"],
+    "expectedGapLabel": "Summer program",
+    "rationale": "Appendix A seeded open gap Summer program: a new phrasing (kindergarteners in June and July) must file under the existing label."
+  }
+]
