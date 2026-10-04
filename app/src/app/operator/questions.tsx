@@ -54,7 +54,7 @@ export function Questions({ questions }: { questions: QuestionRow[] }) {
               {q.message}
             </button>
             <p className="meta">
-              {q.ago} · {OPERATOR.outcomes[q.outcome]} · {q.reason.replace(/_/g, ' ')}
+              {q.ago} · {OPERATOR.outcomes[q.outcome]} · {OPERATOR.reasons[q.reason]}
             </p>
             {q.cited.length > 0 && <p className="meta">{OPERATOR.cites(q.cited.join(', '))}</p>}
             {q.sent && <p className="badge">{OPERATOR.sentToFrontDesk}</p>}

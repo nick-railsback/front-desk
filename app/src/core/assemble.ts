@@ -14,6 +14,9 @@ type Structured = Seed['structured'];
 export const MAX_OUTPUT_TOKENS = 400;
 const CALENDAR_DAYS_AHEAD = 60;
 const HISTORY_TURNS = 4;
+// Prior turns come from the client. A real reply fits well inside this; a
+// longer turn is cut rather than refused, so a follow-up still gets answered.
+const HISTORY_TURN_CHARS = 2_000;
 
 function dataSection(id: string, title: string, today: string, lines: string[]): Section {
   return { id, title, visibility: 'parent', updatedOn: today, text: lines.join('\n') };
@@ -81,7 +84,7 @@ export function buildModelRequest(input: {
     currentDate: `${longDate(denverDate(input.now))}, ${clockTime(input.now)}`,
     snapshotText: parentSections.map((s) => `[${s.id}] ${s.title} (updated ${s.updatedOn})\n${s.text}`).join('\n\n'),
     openGapLabels: input.openGapLabels,
-    history: input.priorTurns.slice(-HISTORY_TURNS),
+    history: input.priorTurns.slice(-HISTORY_TURNS).map((t) => ({ ...t, text: t.text.slice(0, HISTORY_TURN_CHARS) })),
     message: input.message,
   };
 }

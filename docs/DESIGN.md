@@ -115,7 +115,7 @@ The eval runner calls the same `answer()`. That is the "one path" rule: whatever
    - **Dropped:** everything else.
 2. **pre-guard** runs the floor lexicons.
    - If an urgent lexicon fires, return the urgent template. **No model call is made:** nothing ranks above urgent, so the model cannot change the outcome.
-   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff.
+   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff, and when the model also proposes a handoff the floor's `sensitive` reason wins, so a sensitive message is never filed into a gap (feature-close F22).
    - The model's judgment matters for the subtle phrasings; those live in the eval strata built to slip past the lexicons.
 3. **assemble** builds the model input (4.4).
 4. **model** makes one call (4.5). One 15 s deadline on the injected clock covers the call and its retries: a `ThrottlingException` is retried after 500, 1000, 2000 and 4000 ms backoffs while another attempt still fits.
@@ -220,18 +220,19 @@ Extract and normalize these value types:
 
 | Type | Forms accepted | Normalized to |
 |---|---|---|
-| Money | `$15`, `$15.00` | `$15` |
+| Money | `$15`, `$15.00`, `15 dollars` | `$15` |
 | Times | `5:30 PM`, `5:30 p.m.`, `5:30pm`, `17:30` | `17:30` |
 | Times, bare hour | `9 am` | `09:00` |
+| Times, no AM or PM | `5:30` | `05:30` or `17:30`; either in the source grounds it |
 | Dates | `Nov 11`, `November 11`, `11/11` | `11-11` |
 | Temperatures | `100.4°F`, `100.4 F`, `100.4 degrees` | `100.4f` |
 | Number with unit | `24 hours`, `24 hrs`, `24-hour` | `24 hour` |
 
-The same applies to minutes, days, weeks, and percent. Weekday names and spelled-out numbers are not checked; the prompt asks for numerals.
+The same applies to minutes, days, weeks, and percent. An impossible 12-hour time such as `17:30 PM` becomes a value no source holds, so it never passes. Weekday names and spelled-out numbers are not checked; the prompt asks for numerals.
 
 The set of values from the answer must be a subset of the set from the source. Test this module hardest; it is the signature trust feature.
 
-The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. No test imports the extractor directly. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and those are the only guard on it, because the metric cannot disagree with the guard (feature-close F2, F23).
+The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and `app/tests/unit/grounding.test.ts` calls it directly for the forms the review found it misreading. Those tests are the only guard on it, because the metric cannot disagree with the guard (feature-close F2, F17).
 
 ### 4.8 Today card and expectations (`today.ts`)
 
@@ -253,7 +254,7 @@ Filing applies only when the reason is `not_in_source` or `grounding_failed`. Ta
 4. **Pacing.** The account allows 10 model calls a minute, so a burst comes back throttled. Sequential calls, `answer()`'s own throttle retry, and one further 6 s wait and re-run for a question still throttled keep a live replay near that rate: 16 seeded questions in about 96 s, 60 in about 6 minutes (PRD O11).
 5. **The UI** polls `GET /api/replay` (no ID: the sandbox's latest replay) right after publishing and then every second, showing `<completed> of <total>`, and refreshes the page when the replay is done.
 
-This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running`. The operator view then polls it forever and keeps Publish disabled for that sandbox until Reset demo (feature-close F7, not yet fixed). A Reset during a replay does not stop it: the remaining questions still call the model (F8).
+This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running` with no process to finish it. Each recorded question stamps `progress_at` with database time, and a `running` row with no progress for 2 minutes reads as failed, so Publish works again. A page that was already following the replay also shows that it failed (feature-close F7). A Reset during a replay stops it after the question in flight: recording progress finds the row gone with its sandbox (F8).
 
 ## 5. Data model (Drizzle, Postgres 16)
 
@@ -282,7 +283,7 @@ Built in chunk 07 (migration `0003_replays`):
 
 | Table | Columns | Primary key |
 |---|---|---|
-| `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at | id |
+| `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at, progress_at (database time of the last question finished) | id |
 
 Built in chunk 08 (migration `0004_demo`): `sandboxes.try_this_dismissed_at`, a nullable timestamp set when the visitor dismisses the Try this strip. The strip shows on both views while it is null.
 
@@ -340,7 +341,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 
 ## 7. Evals and tests
 
-- **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth was planned where the logic is ours and complicated: grounding normalization, the floor lexicons and Denver calendar math. As built, grounding and the floors are tested through `ask()` instead: 12 answers for grounding (`app/tests/pipeline/answers.test.ts`), 19 messages for the floors (`app/tests/pipeline/outcomes.test.ts`) plus the blue-lips route test (`app/tests/demo/floor.test.ts`). The bare-word non-triggers have no direct test (feature-close F23). No tests that re-verify proven packages.
+- **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth was planned where the logic is ours and complicated: grounding normalization, the floor lexicons and Denver calendar math. As built, grounding and the floors are tested mainly through `ask()`: 12 answers for grounding (`app/tests/pipeline/answers.test.ts`), 19 messages for the floors (`app/tests/pipeline/outcomes.test.ts`) plus the blue-lips route test (`app/tests/demo/floor.test.ts`). Direct tests in `app/tests/unit/grounding.test.ts` and `app/tests/unit/floors.test.ts` cover the forms and phrases the feature-close review found misread; the bare-word non-triggers still have no direct test (F23). No tests that re-verify proven packages.
 - **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of data `read()` returns. `replays` is outside that set; its statements filter on the sandbox ID but no isolation test covers them (feature-close F26). They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
 - **e2e tests (Playwright).** `pnpm test:e2e`, never part of `pnpm test`. They start `next dev` with the fixture model and reach each reason through its `fixture:<reason> ` prefix, read Postgres directly to check what was stored, and run axe on each view state (PRD A1).
 - **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. The frozen tests drive it with scripted replies on a fake clock.
@@ -537,7 +538,7 @@ Reported metrics per stratum (the four gated metrics are 1.00 in every stratum; 
 **What the numbers don't say.**
 - They are evidence about these 64 cases only. An agent drafted every case from the PRD and Appendix A before the answer prompt existed, and Nick reviewed each one; none is held out from its author.
 - One center, English only, one model at `temperature: 0`.
-- **The gates can pass a broken run.** A failed model call becomes a `system_error` handoff that all four gated metrics count as safe, so a run where the model was unreachable still scores 1.00; this run's zero failure count is what rules that out (feature-close F1). `grounded` re-runs the pipeline's own `isGrounded` on the same text and sections, so it can only catch drift between the two (F2). No case trips an urgent floor unless urgent is expected, so floor false positives are invisible to the suite (F4).
+- **The gates can pass a broken run.** A failed model call becomes a `system_error` handoff that the other three gated metrics count as safe, so `schema_valid` counts any trial with a failure as invalid; before that fix an unreachable model scored 1.00 (feature-close F1). `grounded` re-runs the pipeline's own `isGrounded` on the same text and sections, so it can only catch drift between the two (F2). No case trips an urgent floor unless urgent is expected, so floor false positives are invisible to the suite (F4).
 - **The eval reports after the fact.** On `main`, `evals.yml` starts with `deploy.yml` and finishes about 18 minutes after the change is serving; no step rolls back (F9).
 - The report records which trials failed, not each trial's outcome and reason, so every cause above is inferred from the metrics and the cases. Logging the reply per trial is the first change before any instruction tuning.
 
@@ -549,7 +550,7 @@ What the build gave up, and where each is described:
 |---|---|---|
 | Caution over coverage: `route_safe` gates, `resolved_when_answerable` only reports | Half of answerable questions get a handoff today | Section 14 |
 | The account's Bedrock quota stayed at 10 calls a minute after AWS declined an increase | A replay of the 16 seeded gap questions takes about 96 s; PRD Q10 relaxed to 20 minutes and O11 to 7 minutes; every demo visitor shares the limit | Sections 4.10, 7 |
-| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay leaves the replay `running` and Publish disabled for that sandbox | Sections 4.10, 8; D3 |
+| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay loses the replay, which reads as failed 2 minutes later | Sections 4.10, 8; D3 |
 | CloudFront reaches the origin over HTTP | Plain HTTP inside AWS for fictional data | Section 8 |
 | The AMI lookup is committed | The account ID and the VPC, subnet and AMI IDs sit in the repo | Section 8 |
 | `evals.yml` on `main` runs alongside `deploy.yml` | A regression is reported about 18 minutes after it is live, and nothing rolls back | Sections 9, 14 |

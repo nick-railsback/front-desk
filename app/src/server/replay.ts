@@ -52,7 +52,8 @@ export async function runReplay(sandboxId: string, replayId: string, deps: { mod
       for (const message of gap.messages) {
         if (await answered(message)) yes += 1;
         completed += 1;
-        await access.recordReplayProgress(replayId, completed);
+        // Reset demo deleted the sandbox: stop spending the shared model quota.
+        if (!(await access.recordReplayProgress(replayId, completed))) return;
       }
       const replayed = gap.messages.length;
       results.push({ gapId: gap.id, label: gap.label, replayed, answered: yes, resolved: replayed > 0 && yes === replayed });

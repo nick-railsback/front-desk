@@ -1,0 +1,1 @@
+ALTER TABLE "replays" ADD COLUMN "progress_at" timestamp with time zone;

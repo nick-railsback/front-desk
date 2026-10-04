@@ -265,6 +265,8 @@ describe('gap filing', () => {
       'grounding_failed',
     ],
     ['a not_in_source handoff naming an open gap', handoffOut('not_in_source', { gapLabel: 'Sibling discount' }), 'Sibling discount', 'not_in_source'],
+    // Feature-close F21: the plural opened a second gap beside the singular.
+    ['a not_in_source handoff naming an open gap in the plural', handoffOut('not_in_source', { gapLabel: 'Sibling discounts' }), 'Sibling discount', 'not_in_source'],
     [
       'an answer left with no valid citation naming an open gap',
       answerOut('Summer care is available.', ['no-such-section'], { gapLabel: 'Summer program' }),

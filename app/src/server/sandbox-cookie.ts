@@ -14,7 +14,8 @@ export function sandboxFromCookie(header: string | null): string | null {
   for (const part of (header ?? '').split(';')) {
     const eq = part.indexOf('=');
     if (eq > 0 && part.slice(0, eq).trim() === SANDBOX_COOKIE) {
-      const value = decodeURIComponent(part.slice(eq + 1).trim());
+      // Not percent-encoded, so never a sandbox ID: a fresh one replaces it.
+      const value = part.slice(eq + 1).trim();
       return UUID.test(value) ? value : null;
     }
   }

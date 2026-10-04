@@ -13,10 +13,19 @@ const pad = (n: number) => String(n).padStart(2, '0');
 function time(hour: number, minute: number, meridiem?: string): string | null {
   let h = hour;
   if (meridiem) {
-    if (h < 1 || h > 12) return null;
+    // "17:30 PM" is no time of day, so no source can ground it.
+    if (h < 1 || h > 12) return `time invalid ${hour}:${pad(minute)}${meridiem.toLowerCase()}m`;
     h = (h % 12) + (meridiem.toLowerCase() === 'p' ? 12 : 0);
   }
   return h > 23 || minute > 59 ? null : `time ${pad(h)}:${pad(minute)}`;
+}
+
+// A time with no AM or PM: "5:30" may be 05:30 or 17:30, so it carries both
+// readings, joined by "|".
+function bareTime(hour: number, minute: number): string | null {
+  if (hour < 1 || hour > 12) return time(hour, minute);
+  const readings = [time(hour, minute, 'a'), time(hour, minute, 'p')].filter((t) => t !== null);
+  return readings.length > 0 ? readings.join('|') : null;
 }
 
 function date(month: number, day: number): string | null {
@@ -34,8 +43,9 @@ const UNITS: [RegExp, string][] = [
 // Each extractor: a pattern and how one match becomes a normalized value.
 const EXTRACTORS: [RegExp, (m: RegExpExecArray) => string | null][] = [
   [/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g, (m) => `money $${Number(m[1].replace(/,/g, ''))}`],
+  [/(?<![\d.$])(\d[\d,]*(?:\.\d{1,2})?)\s*(?:dollars?|bucks)\b/gi, (m) => `money $${Number(m[1].replace(/,/g, ''))}`],
   [new RegExp(`(?<![\\d:.])(\\d{1,2}):(\\d{2})\\s*${MERIDIEM}`, 'gi'), (m) => time(Number(m[1]), Number(m[2]), m[3])],
-  [new RegExp(`(?<![\\d:.])(\\d{1,2}):(\\d{2})(?!\\d|\\s*[ap]\\.?\\s?m\\b)`, 'gi'), (m) => time(Number(m[1]), Number(m[2]))],
+  [new RegExp(`(?<![\\d:.])(\\d{1,2}):(\\d{2})(?!\\d|\\s*[ap]\\.?\\s?m\\b)`, 'gi'), (m) => bareTime(Number(m[1]), Number(m[2]))],
   [new RegExp(`(?<![\\d:.$])(\\d{1,2})\\s*${MERIDIEM}`, 'gi'), (m) => time(Number(m[1]), 0, m[2])],
   [/(?<![\d.])(\d{4})-(\d{2})-(\d{2})(?!\d)/g, (m) => date(Number(m[2]), Number(m[3]))],
   [new RegExp(`\\b${MONTH_NAME}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?![\\d:])`, 'gi'), (m) => date(MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()) + 1, Number(m[2]))],
@@ -64,8 +74,9 @@ export function extractValues(text: string): Set<string> {
   return values;
 }
 
-// True when every value in `text` appears in the cited sections' text.
+// True when every value in `text` appears in the cited sections' text. A
+// value with more than one reading needs only one of them there.
 export function isGrounded(text: string, cited: Section[]): boolean {
-  const source = extractValues(cited.map((s) => s.text).join('\n'));
-  return [...extractValues(text)].every((v) => source.has(v));
+  const source = new Set([...extractValues(cited.map((s) => s.text).join('\n'))].flatMap((v) => v.split('|')));
+  return [...extractValues(text)].every((v) => v.split('|').some((reading) => source.has(reading)));
 }

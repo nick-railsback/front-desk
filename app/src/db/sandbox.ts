@@ -61,7 +61,13 @@ export async function migrate(): Promise<void> {
 
 export async function createSandbox(now: Date): Promise<string> {
   const [row] = await db().insert(sandboxes).values({ createdAt: now, lastSeenAt: now }).returning({ id: sandboxes.id });
-  await forSandbox(row.id).write(seed(now));
+  try {
+    await forSandbox(row.id).write(seed(now));
+  } catch (err) {
+    // An empty sandbox would read as existing forever; never hand one out.
+    await deleteSandbox(row.id).catch((e) => console.error('createSandbox: could not remove the empty sandbox:', e));
+    throw err;
+  }
   return row.id;
 }
 
@@ -360,7 +366,7 @@ export function forSandbox(sandboxId: string) {
         const total = counts.reduce((sum, c) => sum + Math.min(REPLAY_PER_GAP, c.count), 0);
         const [replay] = await tx
           .insert(replays)
-          .values({ sandboxId, snapshotVersion: version, status: total > 0 ? 'running' : 'done', completed: 0, total, results: [], createdAt: now })
+          .values({ sandboxId, snapshotVersion: version, status: total > 0 ? 'running' : 'done', completed: 0, total, results: [], createdAt: now, progressAt: sql`now()` })
           .returning({ id: replays.id });
         return { version, replayId: replay.id, total };
       });
@@ -372,11 +378,14 @@ export function forSandbox(sandboxId: string) {
       return open.map((g) => ({ id: g.id, label: g.label, messages: g.questions.slice(0, REPLAY_PER_GAP).map((q) => q.message) }));
     },
 
-    async recordReplayProgress(replayId: string, completed: number): Promise<void> {
-      await db()
+    // False when the replay is gone: Reset demo deleted its sandbox.
+    async recordReplayProgress(replayId: string, completed: number): Promise<boolean> {
+      const rows = await db()
         .update(replays)
-        .set({ completed })
-        .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)));
+        .set({ completed, progressAt: sql`now()` })
+        .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)))
+        .returning({ id: replays.id });
+      return rows.length > 0;
     },
 
     // Ends a replay with each gap's result, and resolves the gaps it
@@ -405,13 +414,33 @@ export function forSandbox(sandboxId: string) {
         .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)));
     },
 
-    // The sandbox's latest replay, or null before its first publish.
+    // The sandbox's latest replay, or null before its first publish. A
+    // replay runs in the app's process, so one a restart interrupted stays
+    // running in the table; with no progress for REPLAY_STALE it reads as
+    // failed, and the operator can publish again.
     async latestReplay(): Promise<Replay | null> {
-      const [row] = await db().select().from(replays).where(eq(replays.sandboxId, sandboxId)).orderBy(desc(replays.snapshotVersion)).limit(1);
-      return row ? { status: row.status as Replay['status'], completed: row.completed, total: row.total, results: row.results } : null;
+      const [row] = await db()
+        .select({
+          status: replays.status,
+          completed: replays.completed,
+          total: replays.total,
+          results: replays.results,
+          stale: sql<boolean>`coalesce(${replays.progressAt}, ${replays.createdAt}) < now() - ${REPLAY_STALE}::interval`,
+        })
+        .from(replays)
+        .where(eq(replays.sandboxId, sandboxId))
+        .orderBy(desc(replays.snapshotVersion))
+        .limit(1);
+      if (!row) return null;
+      const status = row.status === 'running' && row.stale ? 'failed' : (row.status as Replay['status']);
+      return { status, completed: row.completed, total: row.total, results: row.results };
     },
   };
 }
+
+// One question takes at most about 40 s: the model deadline twice and the
+// throttle pause between.
+const REPLAY_STALE = '2 minutes';
 
 // A gap's questions a replay re-runs: its most recent 20 (PRD O10).
 const REPLAY_PER_GAP = 20;

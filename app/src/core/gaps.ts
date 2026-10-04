@@ -6,12 +6,19 @@ const MAX_LABEL_WORDS = 8;
 const JOIN_THRESHOLD = 0.5;
 const STOPWORDS = new Set(['a', 'an', 'and', 'the', 'of', 'for', 'to', 'in', 'on', 'at', 'or', 'is', 'are', 'do', 'does', 'my', 'our', 'your', 'about', 'with']);
 
+// A plural reduced to its singular, so "Sibling discounts" joins "Sibling
+// discount": "families" to "family", "classes" to "class", "fees" to "fee".
+function singular(word: string): string {
+  return word.replace(/ies$/, 'y').replace(/(s|x|z|ch|sh)es$/, '$1').replace(/(?<![su])s$/, '');
+}
+
 function tokens(label: string): Set<string> {
   return new Set(
     label
       .toLowerCase()
       .split(/[^a-z0-9]+/)
-      .filter((t) => t !== '' && !STOPWORDS.has(t)),
+      .filter((t) => t !== '' && !STOPWORDS.has(t))
+      .map(singular),
   );
 }
 

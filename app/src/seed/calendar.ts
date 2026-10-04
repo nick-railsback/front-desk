@@ -40,10 +40,10 @@ function holidaysIn(year: number): CalendarEntry[] {
   return days.map(([date, name, status]) => ({ id: `holiday-${date}`, date, name, status, time: null }));
 }
 
-// The first weekday on or after a date.
-function weekdayFrom(date: string): string {
+// The first weekday on or after a date that is not in `closed`.
+function weekdayFrom(date: string, closed: CalendarEntry[] = []): string {
   let d = date;
-  while (!isWeekday(d)) d = addDays(d, 1);
+  while (!isWeekday(d) || closed.some((e) => e.date === d)) d = addDays(d, 1);
   return d;
 }
 
@@ -51,10 +51,13 @@ export function calendar(creation: string): CalendarEntry[] {
   const year = Number(creation.slice(0, 4));
   const last = addDays(creation, 365);
   const holidays = [...holidaysIn(year), ...holidaysIn(year + 1)].filter((h) => h.date >= creation && h.date <= last);
+  const staffDay: CalendarEntry = { id: 'staff-development-day', date: weekdayFrom(addDays(creation, 6)), name: 'Staff development day', status: 'closed', time: null };
+  // An open event, so never on a day the center is closed.
+  const closed = [...holidays, staffDay].filter((e) => e.status === 'closed');
   return [
     ...holidays,
-    { id: 'staff-development-day', date: weekdayFrom(addDays(creation, 6)), name: 'Staff development day', status: 'closed', time: null },
-    { id: 'picture-day', date: weekdayFrom(addDays(creation, 1)), name: 'Picture Day', status: 'open', time: '9:00 AM' },
+    staffDay,
+    { id: 'picture-day', date: weekdayFrom(addDays(creation, 1), closed), name: 'Picture Day', status: 'open', time: '9:00 AM' },
     { id: 'fall-family-night', date: addDays(creation, -1), name: 'Fall Family Night', status: 'open', time: '5:30 PM' },
   ];
 }
