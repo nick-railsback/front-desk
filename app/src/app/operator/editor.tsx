@@ -3,14 +3,16 @@
 // The section editor (PRD O6, O8): title, body and visibility, saved to the
 // draft as the operator wrote them. Opened from "Answer this", it starts on a
 // new section titled with the gap's label, beside every phrasing in the gap.
-// A refused or failed save keeps the fields and says so inline.
+// A refused or failed save keeps the fields and says so inline. Opened from a
+// gap, choosing Staff only says the gap will stay open: replay answers
+// parents, who never see staff-only text.
 
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { OPERATOR } from '../../core/copy';
 import type { Visibility } from '../../core/types';
 
-export type Editing = { id: string | null; title: string; text: string; visibility: Visibility; phrasings: string[] };
+export type Editing = { id: string | null; title: string; text: string; visibility: Visibility; phrasings: string[]; fromGap: boolean };
 
 const MAX_TITLE = 80;
 const MAX_TEXT = 4000;
@@ -69,10 +71,12 @@ export function Editor({ editing, onDone }: { editing: Editing; onDone: () => vo
         {VISIBILITIES.map((v) => (
           <label key={v}>
             <input type="radio" name="visibility" value={v} checked={visibility === v} onChange={() => setVisibility(v)} />
-            {OPERATOR.visibility[v]}
+            {OPERATOR.visibilityChoice[v]}
           </label>
         ))}
       </fieldset>
+      {/* Always rendered, so the note is announced when it appears. */}
+      <div role="status">{editing.fromGap && visibility === 'staff' && <p className="notice">{OPERATOR.staffGapNote}</p>}</div>
       {message && (
         <p role="alert" className="notice">
           {message}

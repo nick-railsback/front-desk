@@ -117,7 +117,11 @@ export const OPERATOR = {
   addSection: 'Add section',
   edit: (title: string) => `Edit ${title}`,
   editLabel: 'Edit',
-  visibility: { parent: 'Parent', staff: 'Staff' },
+  // The Center info list's line, and the editor's radios, which say who sees
+  // each.
+  visibility: { parent: 'Parent', staff: 'Staff only' },
+  visibilityChoice: { parent: 'Parent (the front desk answers from it)', staff: 'Staff only (never shown to parents)' },
+  staffGapNote: "This gap stays open: parents never see staff-only text, so the front desk can't answer them from it.",
   newSection: 'New section',
   editSection: 'Edit section',
   titleLabel: 'Title',
@@ -126,16 +130,28 @@ export const OPERATOR = {
   save: 'Save',
   cancel: 'Cancel',
   phrasings: 'What parents asked',
-  refused: 'This section was not saved. A title needs 1 to 80 characters, a body up to 4,000, and a visibility of Parent or Staff.',
+  refused: 'This section was not saved. A title needs 1 to 80 characters, a body up to 4,000, and a visibility of Parent or Staff only.',
   saveFailed: 'This section was not saved. Try again in a moment.',
   publishFailed: 'Nothing was published. Try again in a moment.',
   replayFailed: "We can't show the replay right now. Reload the page in a moment to see its results.",
   unavailable: "We can't show the operator view right now. Try again in a moment.",
 };
 
-// The demo's own controls on both views: the Try this strip and Reset demo
-// (PRD D2, D5).
+// The demo's own controls on both views: the gap explainer, the Try this
+// strip and Reset demo (PRD D2, D5).
 export const DEMO = {
+  howItWorks: 'How this demo works',
+  // What a gap is, in the words of each view's reader.
+  explainer: {
+    parent: {
+      label: "What's a gap question?",
+      text: "The front desk answers only from the center's handbook, which the center's operators write. When a parent asks about something the handbook doesn't cover, the front desk says so instead of guessing, and files the question under a gap: a subject the operators haven't written up yet.",
+    },
+    operator: {
+      label: 'How gaps work',
+      text: "Gaps groups the questions parents asked that your center info doesn't answer, by subject. Answer this opens a new section with those questions beside it. Write the answer and save, then publish: parents get the new text, and each open gap's questions are replayed against it to show how many are now answered.",
+    },
+  },
   tryThis: 'Try this',
   // The first step's question belongs to the seeded Sibling discount gap.
   question: 'Do you offer a discount for siblings?',

@@ -1,10 +1,11 @@
-// The parent view (PRD P1): the Today card, then the Try this strip and the
-// conversation. The proxy has already put this browser in a sandbox; with no
-// sandbox, or no database, the page shows a fixed message with the phone
-// number instead.
+// The parent view (PRD P1): the Today card and the conversation, with the
+// demo section below them and a "How this demo works" link to it at the top
+// (its target is the demo section's id in demo-strip.tsx). The proxy has
+// already put this browser in a sandbox; with no sandbox, or no database, the
+// page shows a fixed message with the phone number instead.
 
 import { headers } from 'next/headers';
-import { PARENT } from '../core/copy';
+import { DEMO, PARENT } from '../core/copy';
 import { type TodayCard as Card, todayCard } from '../core/today';
 import { forSandbox } from '../db/sandbox';
 import { SANDBOX_HEADER } from '../server/sandbox-cookie';
@@ -40,6 +41,9 @@ export default async function Home() {
   }
   return (
     <main>
+      <a className="demo-link" href="#demo">
+        {DEMO.howItWorks}
+      </a>
       <TodayCard card={loaded.card} />
       <ParentView tryThis={{ dismissed: loaded.dismissed }} />
     </main>

@@ -51,7 +51,8 @@ app/                    Next.js (App Router), TypeScript
   src/seed/             seed(now): index.ts (the Seed type), center.ts, calendar.ts, sections.ts, history.ts, dates.ts
   src/app/              routes: / (parent), /operator, /api/ask, /api/send, /api/sections, /api/publish,
                         /api/replay, /api/dismiss, /api/reset, /api/health; role-switcher and demo-strip
-                        (client: Try this and Reset demo, on both views); globals.css (plain CSS)
+                        (client: the gap explainer, Try this and Reset demo, on both views; below the
+                        conversation on /, above the operator view on /operator); globals.css (plain CSS)
   src/app/parent/       the parent view's components: today-card, parent-view (client), reply, phone
   src/app/operator/     the operator view: page (server), operator-view, questions, editor (client)
   tests/unit/           vitest, no network
