@@ -338,6 +338,44 @@ input[type='radio'] {
   font-size: 1.125rem;
 }
 
+/* The demo's controls on both views: the Try this strip and Reset demo. */
+.demo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.try-this {
+  align-self: stretch;
+  padding: 0.75rem 1rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--tint);
+}
+
+.try-this ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.try-this li + li {
+  margin-top: 0.25rem;
+}
+
+.try-this li button {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 /* The operator view. */
 .summary ul,
 .areas,
@@ -396,6 +434,12 @@ input[type='radio'] {
 .progress progress {
   display: block;
   width: 100%;
+}
+
+.publish-help {
+  flex: 1 1 100%;
+  font-size: 0.875rem;
+  color: var(--muted);
 }
 
 .publish-bar .notice {
@@ -497,7 +541,8 @@ input[type='radio'] {
   margin-top: 0.75rem;
 }
 
-.reply-dialog {
+.reply-dialog,
+.reset-dialog {
   width: min(36rem, calc(100% - 1rem));
   max-width: none;
   max-height: calc(100% - 2rem);
@@ -508,7 +553,8 @@ input[type='radio'] {
   background: var(--surface);
 }
 
-.reply-dialog::backdrop {
+.reply-dialog::backdrop,
+.reset-dialog::backdrop {
   background: rgb(27 31 36 / 0.5);
 }
 

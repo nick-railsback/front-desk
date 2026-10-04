@@ -90,7 +90,8 @@ export const OPERATOR = {
   urgent: 'urgent',
   openGaps: 'open gaps',
   percent: (n: number) => `${n}%`,
-  version: (n: number) => `Version ${n}`,
+  version: (n: number, date: string) => `Center info version ${n}, published ${date}`,
+  publishHelp: "Publishing sends the new text to parents and checks the open gaps' questions again.",
   unpublished: 'Unpublished changes',
   publish: 'Publish',
   progressLabel: 'Replay progress',
@@ -130,4 +131,22 @@ export const OPERATOR = {
   publishFailed: 'Nothing was published. Try again in a moment.',
   replayFailed: "We can't show the replay right now. Reload the page in a moment to see its results.",
   unavailable: "We can't show the operator view right now. Try again in a moment.",
+};
+
+// The demo's own controls on both views: the Try this strip and Reset demo
+// (PRD D2, D5).
+export const DEMO = {
+  tryThis: 'Try this',
+  // The first step's question belongs to the seeded Sibling discount gap.
+  question: 'Do you offer a discount for siblings?',
+  firstStep: 'Ask a gap question as a parent:',
+  steps: ['Switch to Operator, then Gaps.', 'Answer the gap and publish.', 'Watch the replay.', 'Ask again as a parent.'],
+  dismiss: 'Dismiss Try this',
+  reset: 'Reset demo',
+  resetTitle: 'Reset the demo?',
+  resetBody: 'This deletes everything in this demo and starts a fresh copy of the center.',
+  cancel: 'Cancel',
+  confirm: 'Reset',
+  resetFailed: 'The demo could not be reset. Try again in a moment.',
+  failed: 'That did not work. Try again in a moment.',
 };

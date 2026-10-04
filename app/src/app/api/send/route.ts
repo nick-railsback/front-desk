@@ -2,6 +2,7 @@
 // cookie's sandbox as sent. `sent` is true only when this request set the
 // mark; a repeat, an unknown ID, or another sandbox's reply changes nothing.
 // Never creates a sandbox, and never puts error detail in the response.
+// Records activity for the sandbox.
 
 import { z } from 'zod';
 import { forSandbox } from '../../../db/sandbox';
@@ -17,7 +18,10 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const sandboxId = sandboxFromCookie(request.headers.get('cookie'));
     if (!sandboxId) return Response.json({ sent: false });
-    return Response.json({ sent: await forSandbox(sandboxId).markSent(body.data.replyId, new Date()) });
+    const now = new Date();
+    const access = forSandbox(sandboxId);
+    if (!(await access.seen(now))) return Response.json({ sent: false });
+    return Response.json({ sent: await access.markSent(body.data.replyId, now) });
   } catch (err) {
     console.error('POST /api/send failed:', err);
     return Response.json({ sent: false });

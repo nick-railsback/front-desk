@@ -42,13 +42,16 @@ app/                    Next.js (App Router), TypeScript
   src/server/           ask.ts (limits, storage, gap filing around answer()), model.ts (getModel, MODEL_ID),
                         adapters bedrock.ts and fixture.ts, clock.ts (the real clock),
                         sandbox-cookie.ts (the fd_sandbox cookie and the x-fd-sandbox header),
-                        replay.ts (re-runs open gap questions after a publish)
-  src/instrumentation.ts  applies migrations at server start
-  src/proxy.ts          first visit to / or /operator: creates the sandbox and sets its cookie on the page's response
+                        replay.ts (re-runs open gap questions after a publish),
+                        idle.ts (the daily idle-sandbox deletion, on an injected clock)
+  src/instrumentation.ts  applies migrations at server start, then starts the idle deletion
+  src/proxy.ts          / and /operator: the nonce CSP; first visit creates the sandbox and sets its cookie
+                        on the page's response; a return visit records activity
   src/db/               schema.ts, migrations/ (generated), sandbox.ts (all sandbox-scoped access, via forSandbox)
   src/seed/             seed(now): index.ts (the Seed type), center.ts, calendar.ts, sections.ts, history.ts, dates.ts
   src/app/              routes: / (parent), /operator, /api/ask, /api/send, /api/sections, /api/publish,
-                        /api/replay, /api/health; role-switcher (client); globals.css (plain CSS)
+                        /api/replay, /api/dismiss, /api/reset, /api/health; role-switcher and demo-strip
+                        (client: Try this and Reset demo, on both views); globals.css (plain CSS)
   src/app/parent/       the parent view's components: today-card, parent-view (client), reply, phone
   src/app/operator/     the operator view: page (server), operator-view, questions, editor (client)
   tests/unit/           vitest, no network
@@ -71,6 +74,7 @@ infra/                  CDK app (TypeScript), one stack
 docs/                   PRD.md, DESIGN.md, WALKTHROUGH.md, chunks/
 .claude/                settings.json (deny rules)
 .github/workflows/      ci.yml, evals.yml, deploy.yml, oracle-guard.yml
+.github/scripts/        check-answer.sh, the post-deploy check deploy.yml runs
 ```
 
 The workspace has three pnpm packages: `app`, `evals`, `infra`. `evals` imports `app/src/core` through the workspace.
@@ -123,6 +127,7 @@ The lexicons are phrase lists in `floors.ts`, matched case-insensitively on word
 
 - **Urgent:**
   - not breathing, unconscious, not responding, seizure, choking, allergic reaction, epipen, bleeding, hit (his|her|their) head, broke(n) (arm|leg|bone), call 911 (reason `emergency`);
+  - lip(s) ... blue|purple (up to four words between), blue lips, breathing ... slow|shallow|weird|funny (up to three words between), slow|shallow breathing (reason `emergency`; chunk 08, for a calm message about blue lips and slow breathing). "Blue room" and "breathing exercises" do not match;
   - can't find (my|our) (son|daughter|child|kid), (child) is missing, missing child;
   - abuse(d), neglect, hurt by, hit (my|our) (child);
   - drunk / intoxicated / high / impaired + pick(ing) up, stranger + pick(ing) up, not on (our) pickup list, trying to take (my|our) (child);
@@ -278,6 +283,8 @@ Built in chunk 07 (migration `0003_replays`):
 |---|---|---|
 | `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at | id |
 
+Built in chunk 08 (migration `0004_demo`): `sandboxes.try_this_dismissed_at`, a nullable timestamp set when the visitor dismisses the Try this strip. The strip shows on both views while it is null.
+
 Chunk 07 also gives `gaps.status` a second value, `resolved`, for a gap whose replayed questions were all answered. A question asked after that opens a new gap, because gap filing joins open gaps only.
 
 `turns` columns: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for replies the pipeline stored, with IDs `live-<uuid>`). Chunk 05 added the T13 logging fields, nullable because seeded history has none:
@@ -286,6 +293,12 @@ Chunk 07 also gives `gaps.status` a second value, `resolved`, for a gap whose re
 - latency_ms, input_tokens, cached_input_tokens, output_tokens.
 
 Chunk 06 added `sent_to_front_desk` (migration `0002_sent_to_front_desk`): a nullable timestamp, set once by Send to front desk, and only on a `live` reply that is not urgent. Chunk 07's Questions list reads it. `conversation_id` is not built: a conversation lives in the parent's browser and is never stored, so a stored turn belongs to no conversation.
+
+**Sandbox lifecycle (chunk 08).**
+- **Activity.** `forSandbox(id).seen(now)` sets `last_seen_at` and reports whether the sandbox still exists. The proxy calls it for both views, and every API route that reads the cookie calls it first. `/api/ask` creates a new sandbox when it returns false; the other routes answer with their fixed error body.
+- **Idle deletion (PRD D7).** `deleteIdleSandboxes(now)` deletes every sandbox whose `last_seen_at` is more than 7 days before `now`; the cascade deletes the rest of its data. `src/server/idle.ts` runs it once at server start and then every 24 hours, on an injected clock whose sleep is unref'd. A failed run is logged and the next one still runs.
+- **Reset demo (PRD D2).** `POST /api/reset` creates a new sandbox, then deletes the old one with `deleteSandbox(id)`, then sets the cookie. Creating first means a failed delete leaves the browser in its old sandbox; the orphaned new one is collected by the idle deletion.
+- `deleteIdleSandboxes` and `deleteSandbox` are the module's only statements on more than one sandbox's data, besides `reserveModelCall`. Both delete whole sandboxes and read nothing.
 
 **Why this split:** sections are a versioned document, so each snapshot is one jsonb value. Structured data is one jsonb document because only sections are ever edited and nothing queries inside it. Traffic (turns, gaps, replays) is relational because every operator view is a join or a group-by.
 
@@ -335,7 +348,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   2. Seed each case once. Its snapshot is the last one `seed(case.now)` publishes.
   3. Run 3 paced trials per case. Each calls the answer function with the case's message, prior turns, `case.now`, and that snapshot. The trial record it returns carries the gap label, so chunk 05 runs the pure `fileIntoGap()` inside that wiring.
   4. Compute the PRD Q4 and Q5 metrics, overall and per stratum (`src/metrics.ts`).
-  5. Write `report.json` and `summary.md` to the output directory.
+  5. Write `report.json` and `summary.md` to the output directory. `report.json` holds `trials`, one entry per trial with its case id, trial number and `failure` (the failure text `answer()` recorded, or null). The summary counts the trials that failed to reach the model and lists their case ids. A validation failure of the model's output is counted there too (chunk 08 plan, R4).
   6. Exit 1 if any gated metric is below 1.00.
 
   Concurrency and the minimum interval between trial starts are per-run settings. Every trial is paced, floored ones included, because the runner cannot know which trials call the model until they return. At the current Bedrock quota of 10 requests per minute for Haiku 4.5, the interval is at least 6000 ms.
@@ -396,7 +409,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   2. Build the amd64 image and push it to ECR, tagged with the commit SHA.
   3. Send one SSM command to the instance tagged `app=front-desk`: write `compose.prod.yml`, ECR login, `docker compose pull`, `docker compose up -d`. Poll the command for up to 5 minutes and fail unless it succeeds.
   4. `curl --fail` `/api/health` through the CDN, with retries; the run fails unless it answers.
-  5. Ask one live question in a fresh sandbox and require an answer with a citation (PRD Q11). Arrives in chunk 08.
+  5. `bash .github/scripts/check-answer.sh "$APP_URL"` (PRD Q11): load `/` for a sandbox cookie, then ask "The center is open Monday to Friday." with it, and fail unless the reply is an answer with at least one citation. The ask spends one call from the global daily cap and is never retried; the page load may retry. The whole check gives up within 120 seconds.
   - It is **not** gated on `ci`. Branch protection and rulesets are unavailable for this private repo on the current GitHub plan, so `deploy.yml` runs in parallel with `ci.yml` and a direct push to main with failing tests would still deploy. The rule instead: push the chunk's feature branch first, and merge it to main only after that branch's `ci` run is green.
   - It reads four GitHub repository variables (variables, not secrets; there are no secrets): `AWS_DEPLOY_ROLE_ARN`, `AWS_EVAL_ROLE_ARN`, `ECR_REPOSITORY_URI`, `APP_URL`. Each is a stack output.
 - **`oracle-guard.yml`** fails a PR that touches `evals/cases/**` without the `oracle-change` label (PRD Q9).
@@ -421,7 +434,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 | Supply chain | pnpm 11.9.0, which doesn't run dependency install scripts unless allowed in `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 ignores `onlyBuiltDependencies`). `allowBuilds` allows `lefthook` and denies `esbuild` (`esbuild: false`): `drizzle-kit` depends on it, pnpm 11 refuses an install whose build scripts are neither allowed nor denied, and `drizzle-kit generate` works without its install script. `minimumReleaseAge: 1440` in the same file. Lockfile committed. Actions pinned by SHA |
 | Abuse and cost | Rate limits checked in `src/db/sandbox.ts` before any model call (PRD S6); `maxTokens` 400; the global daily cap; the budget alert |
 | Errors | Next.js error boundaries and API routes return generic messages; details go to logs only |
-| Headers and CSP | CloudFront response-headers policy (section 8). Its CSP is `override: false`, a fallback that the app's own CSP replaces once chunk 08 sends one. A strict `script-src 'self'` needs nonces in the App Router via middleware; implement that, or document the exact deviation in chunk 08 |
+| Headers and CSP | CloudFront response-headers policy (section 8). Its CSP is `override: false`, a fallback for responses the app sends none on. `src/proxy.ts` sends the app's own on both views: `script-src 'self' 'nonce-<per response>'; frame-ancestors 'none'`, set on the request too so Next puts the nonce on its scripts. `'unsafe-eval'` is added only outside production, because `next dev` needs it. No `'strict-dynamic'`, which would let a nonced script load any host. Other directives are out of scope (PRD S11 constrains scripts only) |
 | Data | Fictional only (PRD S9). No real names or numbers from source handbooks |
 
 ## 11. Dependencies, budgets, vocabulary

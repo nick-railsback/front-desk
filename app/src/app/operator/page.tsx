@@ -7,28 +7,31 @@ import { headers } from 'next/headers';
 import { renderDataSections } from '../../core/assemble';
 import { OPERATOR } from '../../core/copy';
 import { hasUnpublishedChanges, summarize, timeAgo } from '../../core/operator';
-import { longDate } from '../../core/today';
+import { calendarDate, longDate } from '../../core/today';
+import { denverDate } from '../../seed/dates';
 import { forSandbox } from '../../db/sandbox';
 import { citedSections } from '../../server/ask';
 import { SANDBOX_HEADER } from '../../server/sandbox-cookie';
+import { DemoStrip } from '../demo-strip';
 import { type GapRow, OperatorView, type OperatorData } from './operator-view';
 
 export const dynamic = 'force-dynamic';
 
 const RECENT_PHRASINGS = 3;
 
-async function load(): Promise<OperatorData | null> {
+async function load(): Promise<{ data: OperatorData; dismissed: boolean } | null> {
   const sandboxId = (await headers()).get(SANDBOX_HEADER);
   if (!sandboxId) return null;
   try {
     const access = forSandbox(sandboxId);
-    const [questions, gaps, snapshots, draft, replay, context] = await Promise.all([
+    const [questions, gaps, snapshots, draft, replay, context, dismissed] = await Promise.all([
       access.questions(),
       access.gapsWithQuestions(),
       access.snapshots(),
       access.draft(),
       access.latestReplay(),
       access.context(),
+      access.tryThisDismissed(),
     ]);
     const now = new Date();
     const latest = snapshots[snapshots.length - 1];
@@ -53,8 +56,9 @@ async function load(): Promise<OperatorData | null> {
     const byCount = [...open].sort((a, b) => b.questions.length - a.questions.length);
     const resolved = gaps.filter((g) => g.status === 'resolved' && results.some((r) => r.gapId === g.id && r.resolved));
 
-    return {
+    const data: OperatorData = {
       version: latest.version,
+      publishedOn: calendarDate(denverDate(new Date(latest.publishedAt))),
       summary: summarize(questions, open.length, now),
       unpublished: hasUnpublishedChanges(draft, latest.sections),
       replay: replay && { running: replay.status === 'running', completed: replay.completed, total: replay.total },
@@ -79,6 +83,7 @@ async function load(): Promise<OperatorData | null> {
       sections: draft.map((s) => ({ ...s, updated: longDate(s.updatedOn) })),
       dataTitles: renderDataSections(context.structured, now).map((s) => s.title),
     };
+    return { data, dismissed };
   } catch (err) {
     console.error('operator view: could not load:', err);
     return null;
@@ -86,8 +91,8 @@ async function load(): Promise<OperatorData | null> {
 }
 
 export default async function OperatorPage() {
-  const data = await load();
-  if (!data) {
+  const loaded = await load();
+  if (!loaded) {
     return (
       <main>
         <p role="alert" className="unavailable">
@@ -98,7 +103,8 @@ export default async function OperatorPage() {
   }
   return (
     <main>
-      <OperatorView data={data} />
+      <DemoStrip dismissed={loaded.dismissed} />
+      <OperatorView data={loaded.data} />
     </main>
   );
 }

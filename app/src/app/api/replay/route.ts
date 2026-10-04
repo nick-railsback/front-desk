@@ -11,7 +11,10 @@ export async function GET(request: Request): Promise<Response> {
   const sandboxId = sandboxFromCookie(request.headers.get('cookie'));
   if (!sandboxId) return Response.json({ error: 'invalid' }, { status: 400 });
   try {
-    const replay = await forSandbox(sandboxId).latestReplay();
+    const access = forSandbox(sandboxId);
+    // A deleted sandbox gets the same answer as a missing cookie.
+    if (!(await access.seen(new Date()))) return Response.json({ error: 'invalid' }, { status: 400 });
+    const replay = await access.latestReplay();
     return Response.json({
       running: replay?.status === 'running',
       failed: replay?.status === 'failed',

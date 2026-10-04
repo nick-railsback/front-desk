@@ -16,7 +16,11 @@ export async function POST(request: Request): Promise<Response> {
   const sandboxId = sandboxFromCookie(request.headers.get('cookie'));
   if (!sandboxId) return Response.json({ error: 'invalid' }, { status: 400 });
   try {
-    const { version, replayId, total } = await forSandbox(sandboxId).publish(new Date());
+    const now = new Date();
+    const access = forSandbox(sandboxId);
+    // A deleted sandbox gets the same answer as a missing cookie.
+    if (!(await access.seen(now))) return Response.json({ error: 'invalid' }, { status: 400 });
+    const { version, replayId, total } = await access.publish(now);
     if (total > 0) void runReplay(sandboxId, replayId, { model: getModel(), clock: realClock });
     return Response.json({ version });
   } catch (err) {

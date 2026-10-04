@@ -6,14 +6,20 @@
 //
 // Each exchange keeps one stable key, and its reply mounts inside it whole,
 // in one update, so the log announces each reply once (PRD A2).
+//
+// The Try this strip sits above the conversation. Its first step, activated
+// on the operator view, brings the browser here with ?try=1, and the
+// question is asked on arrival.
 
-import { type FormEvent, useRef, useState } from 'react';
-import { FIXED_TEXT, PARENT } from '../../core/copy';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { DEMO, FIXED_TEXT, PARENT } from '../../core/copy';
+import { DemoStrip } from '../demo-strip';
 import type { Turn } from '../../core/types';
 import { ReplyView, type Shown } from './reply';
 
 const MAX_CHARS = 500;
 const PRIOR_EXCHANGES = 2;
+const TRY_PARAM = 'try';
 
 type Exchange = { id: number; message: string; shown: Shown | null };
 
@@ -40,7 +46,7 @@ async function askFrontDesk(message: string, priorTurns: Turn[]): Promise<Shown>
   }
 }
 
-export function ParentView() {
+export function ParentView({ tryThis }: { tryThis: { dismissed: boolean } }) {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
@@ -69,6 +75,17 @@ export function ParentView() {
     input.current?.focus();
   }
 
+  // Asks the Try this question once on arrival from the operator view. The
+  // ref keeps React's development double effect from asking twice.
+  const arrived = useRef(false);
+  useEffect(() => {
+    if (arrived.current || !new URLSearchParams(window.location.search).has(TRY_PARAM)) return;
+    arrived.current = true;
+    window.history.replaceState(null, '', '/');
+    void send(DEMO.question);
+    // Runs on mount only; `send` is read as it is then.
+  }, []);
+
   function submit(event: FormEvent) {
     event.preventDefault();
     void send(draft);
@@ -81,6 +98,7 @@ export function ParentView() {
 
   return (
     <div className="parent-view">
+      <DemoStrip dismissed={tryThis.dismissed} onAsk={(q) => void send(q)} />
       <div role="log" aria-label={PARENT.conversation} className="log">
         {exchanges.map((e) => (
           <div key={e.id} className="exchange">
