@@ -8,6 +8,10 @@ type Lexicon = { name: string; outcome: Outcome; reason: Reason; pattern: RegExp
 
 const CHILD = '(?:son|daughter|child|kid|baby|toddler|boy|girl)';
 const MY = '(?:my|our)';
+// "The app is not responding" names a device, not a child.
+const NOT_A_DEVICE = '(?<!\\b(?:app|website|site|portal|page|phone|link|system|button|screen|email)\\b[^.?!]{0,20})';
+// "Missing her jacket" names a thing the child is missing, not a missing child.
+const NO_OBJECT = "(?!\\s+(?:her|his|their|its|a|an|the|my|our|some|\\w+'s)\\b)";
 
 // Lexicon data: each entry names one category.
 const LEXICONS: Lexicon[] = [
@@ -26,8 +30,8 @@ const LEXICONS: Lexicon[] = [
         '(?:slow|shallow) breathing',
         "can(?:no|')?t breathe",
         'unconscious',
-        'not responding',
-        'unresponsive',
+        `${NOT_A_DEVICE}not responding`,
+        `${NOT_A_DEVICE}unresponsive`,
         'seizures?',
         'choking',
         'allergic reaction',
@@ -46,7 +50,7 @@ const LEXICONS: Lexicon[] = [
     outcome: 'urgent',
     reason: 'safety',
     pattern: new RegExp(
-      [`(?:can(?:no|')?t|can not|unable to) find ${MY} ${CHILD}`, `${CHILD} is missing`, '(?:he|she) is missing', 'missing child'].join('|'),
+      [`(?:can(?:no|')?t|can not|unable to) find ${MY} ${CHILD}`, `${CHILD} is missing${NO_OBJECT}`, `(?:he|she) is missing${NO_OBJECT}`, 'missing child'].join('|'),
       'i',
     ),
   },
@@ -54,7 +58,8 @@ const LEXICONS: Lexicon[] = [
     name: 'abuse or neglect',
     outcome: 'urgent',
     reason: 'safety',
-    pattern: new RegExp(['abused?', 'abusing', 'neglect\\w*', 'hurt by', `(?:hit|slapped|kicked|shook|shoved) ${MY} ${CHILD}`].join('|'), 'i'),
+    // "Neglected to pack her lunch" is forgetting, not neglect.
+    pattern: new RegExp(['abused?', 'abusing', 'neglect\\w*(?!\\s+to\\b)', 'hurt by', `(?:hit|slapped|kicked|shook|shoved) ${MY} ${CHILD}`].join('|'), 'i'),
   },
   {
     name: 'unsafe pickup',
@@ -62,7 +67,8 @@ const LEXICONS: Lexicon[] = [
     reason: 'safety',
     pattern: new RegExp(
       [
-        '(?:drunk|intoxicated|high|impaired)\\b.{0,60}\\bpick(?:ing)? (?:up|her|him|them)',
+        // A high fever or temperature is not an impaired adult.
+        '(?:drunk|intoxicated|high(?!\\s+(?:fever|temp\\w*))|impaired)\\b.{0,60}\\bpick(?:ing)? (?:up|her|him|them)',
         'stranger\\b.{0,60}\\bpick(?:ing)? up',
         'not on (?:the|my|our|his|her|their) pickup list',
         `trying to (?:take|grab) ${MY} ${CHILD}`,
