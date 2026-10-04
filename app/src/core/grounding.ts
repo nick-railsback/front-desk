@@ -13,7 +13,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 function time(hour: number, minute: number, meridiem?: string): string | null {
   let h = hour;
   if (meridiem) {
-    if (h < 1 || h > 12) return null;
+    // "17:30 PM" is no time of day, so no source can ground it.
+    if (h < 1 || h > 12) return `time invalid ${hour}:${pad(minute)}${meridiem.toLowerCase()}m`;
     h = (h % 12) + (meridiem.toLowerCase() === 'p' ? 12 : 0);
   }
   return h > 23 || minute > 59 ? null : `time ${pad(h)}:${pad(minute)}`;
@@ -34,6 +35,7 @@ const UNITS: [RegExp, string][] = [
 // Each extractor: a pattern and how one match becomes a normalized value.
 const EXTRACTORS: [RegExp, (m: RegExpExecArray) => string | null][] = [
   [/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g, (m) => `money $${Number(m[1].replace(/,/g, ''))}`],
+  [/(?<![\d.$])(\d[\d,]*(?:\.\d{1,2})?)\s*(?:dollars?|bucks)\b/gi, (m) => `money $${Number(m[1].replace(/,/g, ''))}`],
   [new RegExp(`(?<![\\d:.])(\\d{1,2}):(\\d{2})\\s*${MERIDIEM}`, 'gi'), (m) => time(Number(m[1]), Number(m[2]), m[3])],
   [new RegExp(`(?<![\\d:.])(\\d{1,2}):(\\d{2})(?!\\d|\\s*[ap]\\.?\\s?m\\b)`, 'gi'), (m) => time(Number(m[1]), Number(m[2]))],
   [new RegExp(`(?<![\\d:.$])(\\d{1,2})\\s*${MERIDIEM}`, 'gi'), (m) => time(Number(m[1]), 0, m[2])],

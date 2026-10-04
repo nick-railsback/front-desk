@@ -220,18 +220,18 @@ Extract and normalize these value types:
 
 | Type | Forms accepted | Normalized to |
 |---|---|---|
-| Money | `$15`, `$15.00` | `$15` |
+| Money | `$15`, `$15.00`, `15 dollars` | `$15` |
 | Times | `5:30 PM`, `5:30 p.m.`, `5:30pm`, `17:30` | `17:30` |
 | Times, bare hour | `9 am` | `09:00` |
 | Dates | `Nov 11`, `November 11`, `11/11` | `11-11` |
 | Temperatures | `100.4°F`, `100.4 F`, `100.4 degrees` | `100.4f` |
 | Number with unit | `24 hours`, `24 hrs`, `24-hour` | `24 hour` |
 
-The same applies to minutes, days, weeks, and percent. Weekday names and spelled-out numbers are not checked; the prompt asks for numerals.
+The same applies to minutes, days, weeks, and percent. An impossible 12-hour time such as `17:30 PM` becomes a value no source holds, so it never passes. Weekday names and spelled-out numbers are not checked; the prompt asks for numerals.
 
 The set of values from the answer must be a subset of the set from the source. Test this module hardest; it is the signature trust feature.
 
-The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. No test imports the extractor directly. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and those are the only guard on it, because the metric cannot disagree with the guard (feature-close F2, F23).
+The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and `app/tests/unit/grounding.test.ts` calls it directly for the forms the review found it misreading. Those tests are the only guard on it, because the metric cannot disagree with the guard (feature-close F2, F17).
 
 ### 4.8 Today card and expectations (`today.ts`)
 
