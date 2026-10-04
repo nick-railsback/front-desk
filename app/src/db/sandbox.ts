@@ -61,7 +61,13 @@ export async function migrate(): Promise<void> {
 
 export async function createSandbox(now: Date): Promise<string> {
   const [row] = await db().insert(sandboxes).values({ createdAt: now, lastSeenAt: now }).returning({ id: sandboxes.id });
-  await forSandbox(row.id).write(seed(now));
+  try {
+    await forSandbox(row.id).write(seed(now));
+  } catch (err) {
+    // An empty sandbox would read as existing forever; never hand one out.
+    await deleteSandbox(row.id).catch((e) => console.error('createSandbox: could not remove the empty sandbox:', e));
+    throw err;
+  }
   return row.id;
 }
 
