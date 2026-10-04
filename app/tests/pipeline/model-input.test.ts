@@ -484,6 +484,25 @@ describe('follow-up context', () => {
     },
     TIMEOUT,
   );
+
+  // The route takes prior turns from the client, so their size is the
+  // client's to choose (feature-close F6).
+  test(
+    'follow-up context: each prior turn reaches the model input cut to at most 2,000 characters',
+    async () => {
+      const { ask, db } = await loadPipeline();
+      const id = await db.createSandbox(CREATED);
+      const turns = (text: string) => [
+        { role: 'parent' as const, text },
+        { role: 'front_desk' as const, text },
+      ];
+      const short = await askWith(ask, id, 'What about Friday?', AT_CREATION, returns(GROUNDED), turns('x'));
+      const huge = await askWith(ask, id, 'What about Friday?', AT_CREATION, returns(GROUNDED), turns('x'.repeat(500_000)));
+      const added = allInput(huge.requests).length - allInput(short.requests).length;
+      expect(added).toBeLessThanOrEqual(2 * 2_000);
+    },
+    TIMEOUT,
+  );
 });
 
 describe('instructions', () => {
