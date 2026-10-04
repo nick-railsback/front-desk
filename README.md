@@ -32,7 +32,8 @@ From the latest live eval: [`evals.yml` on `main`](https://github.com/nick-rails
 | Latency p50 | 1.77 s (p95 2.30 s) |
 | Cost per reply | $0.0040 |
 
-- **The gated metrics are the safety floor.** Every trial routed at or above its expected outcome, every number in an answer appeared in the text it cited, every model output passed validation, and no forbidden string appeared. `evals.yml` runs on every push to `main` and on pull requests that change answer behavior, and fails if any of them drops below 1.00.
+- **The gated metrics held on this run, and they check less than their names suggest.** Every trial routed at or above its expected outcome, every number in an answer appeared in the text it cited, every model output passed validation, and no forbidden string appeared. The [independent review](docs/audits/2026-10-04-front-desk-feature-close.md) found two limits. A model call that fails becomes a safe handoff, so a run where the model was unreachable still passes all four gates; the failure count above is what rules that out here (F1). And `grounded` re-runs the pipeline's own grounding check, so it catches wiring drift between the two, not answers the guard misses (F2).
+- **The eval reports; it does not block a deploy.** `evals.yml` runs on pull requests that change answer behavior and on every push to `main`, and fails below 1.00. On `main` it runs alongside the deploy, so a regression is reported about 18 minutes after it is live (F9).
 - **`resolved_when_answerable` misses its target.** On the 31 cases that should be answered, the front desk answered 52% of trials. It errs toward caution: it hands off rather than answering wrongly. The largest miss is `medical_policy` at 0.00, where every symptom question ("101 temp last night, can she come in?") routed above an answer. The likely cause, not yet confirmed, is the instruction to mark a child who "may be hurt, sick, or in danger right now" as urgent, which collides with policy questions about a sick child. The report records which trials failed, not which outcome each one got, so the next step is to log per-trial outcomes and then tune that instruction against this stratum.
 - **These numbers are evidence about these 64 cases only.** An agent drafted every case from the PRD before the answer prompt existed; I reviewed and edited each one. None is held out from me.
 
@@ -53,6 +54,9 @@ Designed for and written up in [PRD section 12](docs/PRD.md#12-out-of-scope-desi
 
 ## Known limits
 
+The full list is in the [feature-close review](docs/audits/2026-10-04-front-desk-feature-close.md). The ones a visitor or reviewer is most likely to meet:
+
+- **The urgent keyword floors over-trigger on some everyday messages.** "The parent app is not responding" or "She has a high fever, so I will pick her up early" gets the urgent reply with no model call. The floors also miss some plain emergencies ("having trouble breathing right now"), which then depend on the model. No eval case covers either class (F3 to F5).
 - **The eval cases' protection has two gaps.** `oracle-guard.yml` fails a pull request that changes `evals/cases/` without the `oracle-change` label, but this build merged each chunk to `main` without a pull request, so the guard never ran on it; my review of each diff was the check. The deny rules in `.claude/settings.json` stop an agent's Edit and Write tools from touching `evals/cases/`, but not a shell command.
 - **Traffic from CloudFront to the instance is plain HTTP.** Acceptable for fictional data; production would terminate TLS at the origin.
 
@@ -68,7 +72,7 @@ Automated axe checks run in CI on the parent view in every reply state and on ea
 pnpm install
 docker compose -f infra/compose.dev.yml up -d db
 pnpm dev          # scripted fixture model, no AWS needed
-pnpm test         # needs DATABASE_URL, see infra/compose.dev.yml
+pnpm test         # needs DATABASE_URL (see infra/compose.dev.yml) and gitleaks on PATH
 pnpm test:e2e
 pnpm eval         # live model calls; needs an AWS SSO profile
 ```
