@@ -128,7 +128,10 @@ export async function answer(input: { message: string; priorTurns: Turn[]; now: 
   const judged = judge(o, snapshot.sections);
   // The outcome ladder: the higher of the floor and the post-guard's result.
   // The reason belongs to the final outcome, so a raising floor brings its own.
-  const raised = RANK[floor.floor] > RANK[ALLOWED_PAIRS[judged.reason]];
+  // A sensitive floor names the reason at equal rank too, so a sensitive
+  // message is never filed into a gap (PRD 5.2).
+  const raised =
+    RANK[floor.floor] > RANK[ALLOWED_PAIRS[judged.reason]] || (floor.reason === 'sensitive' && ALLOWED_PAIRS[judged.reason] === 'handoff');
   const reason = raised ? (floor.reason as Reason) : judged.reason;
   const citations = judged.cited.map((s) => ({ sectionId: s.id }));
   let reply: Reply;

@@ -115,7 +115,7 @@ The eval runner calls the same `answer()`. That is the "one path" rule: whatever
    - **Dropped:** everything else.
 2. **pre-guard** runs the floor lexicons.
    - If an urgent lexicon fires, return the urgent template. **No model call is made:** nothing ranks above urgent, so the model cannot change the outcome.
-   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff.
+   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff, and when the model also proposes a handoff the floor's `sensitive` reason wins, so a sensitive message is never filed into a gap (feature-close F22).
    - The model's judgment matters for the subtle phrasings; those live in the eval strata built to slip past the lexicons.
 3. **assemble** builds the model input (4.4).
 4. **model** makes one call (4.5). One 15 s deadline on the injected clock covers the call and its retries: a `ThrottlingException` is retried after 500, 1000, 2000 and 4000 ms backoffs while another attempt still fits.

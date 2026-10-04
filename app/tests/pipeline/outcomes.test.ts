@@ -136,6 +136,22 @@ describe('outcome ladder', () => {
   }
 });
 
+// PRD 5.2: a sensitive reply is never filed into a gap. At equal rank the
+// model's not_in_source used to win and was filed (feature-close F22).
+describe('sensitive floor under a not_in_source handoff', () => {
+  test(
+    'ends with reason sensitive and files nothing into a gap',
+    async () => {
+      const result = await finalFor(
+        'We are in a custody dispute. Can you tell me which days her dad picked her up?',
+        handoffOut('not_in_source', { gapLabel: 'Custody pickup records' }),
+      );
+      expect({ outcome: result.reply.outcome, reason: result.reply.reason, gapLabel: result.gapLabel }).toEqual({ outcome: 'handoff', reason: 'sensitive', gapLabel: null });
+    },
+    TIMEOUT,
+  );
+});
+
 describe('pickup list', () => {
   // Each phrasing once, with the proposal varied across them.
   const RUNS: [string, string[], string, unknown][] = [
