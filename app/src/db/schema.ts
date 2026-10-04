@@ -129,4 +129,7 @@ export const replays = pgTable('replays', {
   total: integer('total').notNull(),
   results: jsonb('results').$type<ReplayResult[]>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  // Database time of the last question finished, so a replay whose process
+  // is gone can be told from a slow one. Null on rows from before it existed.
+  progressAt: timestamp('progress_at', { withTimezone: true }),
 });

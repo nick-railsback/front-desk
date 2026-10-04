@@ -253,7 +253,7 @@ Filing applies only when the reason is `not_in_source` or `grounding_failed`. Ta
 4. **Pacing.** The account allows 10 model calls a minute, so a burst comes back throttled. Sequential calls, `answer()`'s own throttle retry, and one further 6 s wait and re-run for a question still throttled keep a live replay near that rate: 16 seeded questions in about 96 s, 60 in about 6 minutes (PRD O11).
 5. **The UI** polls `GET /api/replay` (no ID: the sandbox's latest replay) right after publishing and then every second, showing `<completed> of <total>`, and refreshes the page when the replay is done.
 
-This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running`. The operator view then polls it forever and keeps Publish disabled for that sandbox until Reset demo (feature-close F7, not yet fixed). A Reset during a replay does not stop it: the remaining questions still call the model (F8).
+This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running` with no process to finish it. Each recorded question stamps `progress_at` with database time, and a `running` row with no progress for 2 minutes reads as failed: the operator view shows the replay failed and Publish works again (feature-close F7). A Reset during a replay does not stop it: the remaining questions still call the model (F8).
 
 ## 5. Data model (Drizzle, Postgres 16)
 
@@ -282,7 +282,7 @@ Built in chunk 07 (migration `0003_replays`):
 
 | Table | Columns | Primary key |
 |---|---|---|
-| `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at | id |
+| `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at, progress_at (database time of the last question finished) | id |
 
 Built in chunk 08 (migration `0004_demo`): `sandboxes.try_this_dismissed_at`, a nullable timestamp set when the visitor dismisses the Try this strip. The strip shows on both views while it is null.
 
@@ -549,7 +549,7 @@ What the build gave up, and where each is described:
 |---|---|---|
 | Caution over coverage: `route_safe` gates, `resolved_when_answerable` only reports | Half of answerable questions get a handoff today | Section 14 |
 | The account's Bedrock quota stayed at 10 calls a minute after AWS declined an increase | A replay of the 16 seeded gap questions takes about 96 s; PRD Q10 relaxed to 20 minutes and O11 to 7 minutes; every demo visitor shares the limit | Sections 4.10, 7 |
-| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay leaves the replay `running` and Publish disabled for that sandbox | Sections 4.10, 8; D3 |
+| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay loses the replay, which reads as failed 2 minutes later | Sections 4.10, 8; D3 |
 | CloudFront reaches the origin over HTTP | Plain HTTP inside AWS for fictional data | Section 8 |
 | The AMI lookup is committed | The account ID and the VPC, subnet and AMI IDs sit in the repo | Section 8 |
 | `evals.yml` on `main` runs alongside `deploy.yml` | A regression is reported about 18 minutes after it is live, and nothing rolls back | Sections 9, 14 |

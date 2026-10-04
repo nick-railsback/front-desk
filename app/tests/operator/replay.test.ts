@@ -32,6 +32,7 @@ import {
   SEEDED_GAPS,
   SEEDED_GAP_QUESTIONS,
   answeringModel,
+  call,
   closeSql,
   globalCalls,
   letters,
@@ -101,6 +102,31 @@ describe('replay tally', () => {
     },
     10 * MINUTES,
   );
+});
+
+// A deploy restarts the app mid-replay and leaves its row running, with no
+// process left to finish it (feature-close F7).
+describe('a replay left running', () => {
+  async function leaveRunning(id: string, startedAgo: string): Promise<void> {
+    await sql().query(
+      `insert into replays (sandbox_id, snapshot_version, status, completed, total, results, created_at)
+       values ($1, 2, 'running', 2, 16, '[]', now() - $2::interval)`,
+      [id, startedAgo],
+    );
+  }
+
+  test('reads as failed once it has made no progress for minutes, and as running before that', async () => {
+    const r = await loadRoutes(answeringModel().model);
+    const orphaned = await r.db.createSandbox(new Date());
+    const live = await r.db.createSandbox(new Date());
+    await leaveRunning(orphaned, '10 minutes');
+    await leaveRunning(live, '5 seconds');
+
+    const stale = await call(r.replay, 'GET', '/api/replay', orphaned);
+    expect(stale.json, 'a replay no process is running still reads as running, so Publish stays disabled').toMatchObject({ running: false, failed: true });
+    const running = await call(r.replay, 'GET', '/api/replay', live);
+    expect(running.json, 'a replay that just made progress reads as stopped').toMatchObject({ running: true, failed: false });
+  });
 });
 
 describe('global limit', () => {
