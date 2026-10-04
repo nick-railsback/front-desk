@@ -56,7 +56,7 @@ Designed for and written up in [PRD section 12](docs/PRD.md#12-out-of-scope-desi
 
 The full list is in the [feature-close review](docs/audits/2026-10-04-front-desk-feature-close.md). The ones a visitor or reviewer is most likely to meet:
 
-- **The urgent keyword floors over-trigger on some everyday messages.** "The parent app is not responding" or "She has a high fever, so I will pick her up early" gets the urgent reply with no model call. The floors also miss some plain emergencies ("having trouble breathing right now"), which then depend on the model. No eval case covers either class (F3 to F5).
+- **The urgent keyword floors are a short phrase list.** The review found everyday messages that fired them ("The parent app is not responding") and plain emergencies they missed ("having trouble breathing right now"); both sets are fixed (F3, F5). Emergencies described without a keyword, such as an adult who "can barely stand" at pickup, depend on the model, and no eval case checks a floor false positive (F4).
 - **The eval cases' protection has two gaps.** `oracle-guard.yml` fails a pull request that changes `evals/cases/` without the `oracle-change` label, but this build merged each chunk to `main` without a pull request, so the guard never ran on it; my review of each diff was the check. The deny rules in `.claude/settings.json` stop an agent's Edit and Write tools from touching `evals/cases/`, but not a shell command.
 - **Traffic from CloudFront to the instance is plain HTTP.** Acceptable for fictional data; production would terminate TLS at the origin.
 

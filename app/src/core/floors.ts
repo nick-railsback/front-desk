@@ -29,7 +29,11 @@ const LEXICONS: Lexicon[] = [
         'breathing (?:\\w+ ){0,3}?(?:slow|shallow|weird|funny)',
         '(?:slow|shallow) breathing',
         "can(?:no|')?t breathe",
+        '(?:trouble|difficulty|struggling) breathing',
         'unconscious',
+        "(?:won'?t|will not|can(?:no|')?t|is not|isn'?t) wak(?:e|ing) up",
+        `(?:he|she|they|${CHILD}) (?:just |has |have )?(?:collapsed|passed out)`,
+        'swallowed (?:\\w+ ){0,5}?(?:batter(?:y|ies)|magnets?|coins?|pills?|medicine|bleach|detergent|pods?)',
         `${NOT_A_DEVICE}not responding`,
         `${NOT_A_DEVICE}unresponsive`,
         'seizures?',
@@ -50,7 +54,7 @@ const LEXICONS: Lexicon[] = [
     outcome: 'urgent',
     reason: 'safety',
     pattern: new RegExp(
-      [`(?:can(?:no|')?t|can not|unable to) find ${MY} ${CHILD}`, `${CHILD} is missing${NO_OBJECT}`, `(?:he|she) is missing${NO_OBJECT}`, 'missing child'].join('|'),
+      [`(?:can(?:no|')?t|can not|unable to) find ${MY} ${CHILD}`, `(?:nobody|no one) can find (?:${MY} ${CHILD}|him|her)`, `${CHILD} is missing${NO_OBJECT}`, `(?:he|she) is missing${NO_OBJECT}`, 'missing child'].join('|'),
       'i',
     ),
   },
@@ -69,6 +73,7 @@ const LEXICONS: Lexicon[] = [
       [
         // A high fever or temperature is not an impaired adult.
         '(?:drunk|intoxicated|high(?!\\s+(?:fever|temp\\w*))|impaired)\\b.{0,60}\\bpick(?:ing)? (?:up|her|him|them)',
+        '(?:showed|shows|turned|came) up (?:drunk|intoxicated|high|impaired)',
         'stranger\\b.{0,60}\\bpick(?:ing)? up',
         'not on (?:the|my|our|his|her|their) pickup list',
         `trying to (?:take|grab) ${MY} ${CHILD}`,

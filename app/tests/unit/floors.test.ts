@@ -26,3 +26,20 @@ describe('the narrowed branches still fire on the emergency', () => {
     expect(floorFor(message)).toMatchObject({ floor: 'urgent', reason });
   });
 });
+
+describe('plain statements of an emergency (feature-close F5)', () => {
+  test.each([
+    ['trouble breathing', 'emergency', 'My son is having trouble breathing right now.'],
+    ['will not wake up', 'emergency', 'She passed out and will not wake up.'],
+    ['collapsed', 'emergency', 'My daughter collapsed in the hallway.'],
+    ['swallowed a battery', 'emergency', 'I think he swallowed a battery from the toy.'],
+    ['nobody can find a child', 'safety', 'Nobody can find my son at pickup.'],
+    ['an adult showed up drunk', 'safety', 'Her father showed up drunk to get her.'],
+  ])('%s', (_branch, reason, message) => {
+    expect(floorFor(message)).toMatchObject({ floor: 'urgent', reason });
+  });
+
+  test('a late wake-up is not one', () => {
+    expect(floorFor('She did not wake up until 9, so we are running late.').floor).toBe('answer');
+  });
+});
