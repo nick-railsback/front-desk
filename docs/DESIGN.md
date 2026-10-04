@@ -223,6 +223,7 @@ Extract and normalize these value types:
 | Money | `$15`, `$15.00`, `15 dollars` | `$15` |
 | Times | `5:30 PM`, `5:30 p.m.`, `5:30pm`, `17:30` | `17:30` |
 | Times, bare hour | `9 am` | `09:00` |
+| Times, no AM or PM | `5:30` | `05:30` or `17:30`; either in the source grounds it |
 | Dates | `Nov 11`, `November 11`, `11/11` | `11-11` |
 | Temperatures | `100.4°F`, `100.4 F`, `100.4 degrees` | `100.4f` |
 | Number with unit | `24 hours`, `24 hrs`, `24-hour` | `24 hour` |

@@ -20,3 +20,14 @@ describe('values the extractor skipped (feature-close F17)', () => {
     expect(isGrounded('The late fee is 15 dollars.', cited('The late fee is $15 per 5 minutes.'))).toBe(true);
   });
 });
+
+// A bare "5:30" may be morning or evening (feature-close F18).
+describe('a time with no AM or PM', () => {
+  test('is grounded by the source time it can be read as', () => {
+    expect(isGrounded('We are open 7:00-5:30 on weekdays.', cited('Open 7:00 AM to 5:30 PM, Monday to Friday.'))).toBe(true);
+  });
+
+  test('is not grounded by a source that holds neither reading', () => {
+    expect(isGrounded('We close at 5:30.', cited('We close at 6:30 PM.'))).toBe(false);
+  });
+});
