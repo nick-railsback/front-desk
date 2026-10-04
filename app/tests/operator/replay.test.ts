@@ -28,6 +28,7 @@
 // Assumed interface: see ./support.ts.
 
 import { afterAll, afterEach, describe, expect, test } from 'vitest';
+import type { Model } from '../../src/core/types';
 import {
   SEEDED_GAPS,
   SEEDED_GAP_QUESTIONS,
@@ -126,6 +127,30 @@ describe('a replay left running', () => {
     expect(stale.json, 'a replay no process is running still reads as running, so Publish stays disabled').toMatchObject({ running: false, failed: true });
     const running = await call(r.replay, 'GET', '/api/replay', live);
     expect(running.json, 'a replay that just made progress reads as stopped').toMatchObject({ running: true, failed: false });
+  });
+});
+
+// Reset demo deletes the sandbox, replays and all, while its replay runs on
+// in the process (feature-close F8).
+describe('a replay whose sandbox is deleted', () => {
+  test('stops calling the model', async () => {
+    const recorded = answeringModel();
+    let id = '';
+    // Reset demo lands after the replay's second model call.
+    const model: Model = async (request) => {
+      if (recorded.requests.length === 2) await sql().query('delete from sandboxes where id = $1', [id]);
+      return recorded.model(request);
+    };
+    const r = await loadRoutes(model);
+    id = await r.db.createSandbox(new Date());
+    const { forSandbox } = (await import('../../src/db/sandbox')) as typeof import('../../src/db/sandbox');
+    const { runReplay } = (await import('../../src/server/replay')) as typeof import('../../src/server/replay');
+    const { realClock } = (await import('../../src/server/clock')) as typeof import('../../src/server/clock');
+    const { replayId, total } = await forSandbox(id).publish(new Date());
+    expect(total, 'the seeded gaps hold no questions to replay').toBe(16);
+
+    await runReplay(id, replayId, { model, clock: realClock });
+    expect(recorded.requests.length, 'the replay kept calling the model after its sandbox was deleted').toBeLessThanOrEqual(3);
   });
 });
 

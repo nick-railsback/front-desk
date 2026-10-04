@@ -253,7 +253,7 @@ Filing applies only when the reason is `not_in_source` or `grounding_failed`. Ta
 4. **Pacing.** The account allows 10 model calls a minute, so a burst comes back throttled. Sequential calls, `answer()`'s own throttle retry, and one further 6 s wait and re-run for a question still throttled keep a live replay near that rate: 16 seeded questions in about 96 s, 60 in about 6 minutes (PRD O11).
 5. **The UI** polls `GET /api/replay` (no ID: the sandbox's latest replay) right after publishing and then every second, showing `<completed> of <total>`, and refreshes the page when the replay is done.
 
-This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running` with no process to finish it. Each recorded question stamps `progress_at` with database time, and a `running` row with no progress for 2 minutes reads as failed: the operator view shows the replay failed and Publish works again (feature-close F7). A Reset during a replay does not stop it: the remaining questions still call the model (F8).
+This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running` with no process to finish it. Each recorded question stamps `progress_at` with database time, and a `running` row with no progress for 2 minutes reads as failed: the operator view shows the replay failed and Publish works again (feature-close F7). A Reset during a replay stops it after the question in flight: recording progress finds the row gone with its sandbox (F8).
 
 ## 5. Data model (Drizzle, Postgres 16)
 

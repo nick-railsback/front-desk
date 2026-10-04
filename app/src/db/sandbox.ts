@@ -372,11 +372,14 @@ export function forSandbox(sandboxId: string) {
       return open.map((g) => ({ id: g.id, label: g.label, messages: g.questions.slice(0, REPLAY_PER_GAP).map((q) => q.message) }));
     },
 
-    async recordReplayProgress(replayId: string, completed: number): Promise<void> {
-      await db()
+    // False when the replay is gone: Reset demo deleted its sandbox.
+    async recordReplayProgress(replayId: string, completed: number): Promise<boolean> {
+      const rows = await db()
         .update(replays)
         .set({ completed, progressAt: sql`now()` })
-        .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)));
+        .where(and(eq(replays.sandboxId, sandboxId), eq(replays.id, replayId)))
+        .returning({ id: replays.id });
+      return rows.length > 0;
     },
 
     // Ends a replay with each gap's result, and resolves the gaps it
