@@ -1,6 +1,6 @@
 # AI Front Desk: Design
 
-Status: implementation context. This document constrains plans and is never a source of acceptance criteria; those come from `docs/PRD.md`. Chunk 09 turns it into the reviewer-facing design doc by adding results and trade-offs.
+Status: the design as built, 2026-10-04. It explains how the build meets `docs/PRD.md`, what the live eval measured (section 14) and what was traded away (section 15). The PRD is the contract: it wins any disagreement, and acceptance criteria come only from it, never from here.
 
 ## 1. Principles
 
@@ -357,6 +357,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   - From then on, `evals/cases/` is protected (section 10).
   - **Error analysis:** Nick runs the first live eval locally (`pnpm eval` with the `front-desk` SSO profile) before chunk 05 merges, and its summary goes in the review packet. After the first green run, read every transcript once and type 20 freeform questions. Any new failure class becomes a case through a labeled `oracle-change` PR.
   - A suite at 100% is evidence about these cases only; say so in the write-up.
+  - **Not done** (Nick, 2026-10-04): nobody read every transcript or typed the 20 freeform questions. The report could not have supported the first half anyway: `report.json` keeps each trial's case, number and failure text, not its reply. The findings in section 14 come from the per-stratum metrics and the cases behind them.
 
 ## 8. Hosting (CDK, one stack)
 
@@ -385,10 +386,10 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   - the default behavior: all methods, caching disabled, every viewer header, cookie and query string forwarded except `Host`;
   - `/_next/static/*`: cached with the managed caching-optimized policy;
   - one response-headers policy on both behaviors, carrying the PRD S11 headers.
-  - **How the CDN's CSP and the app's headers interact:** HSTS, nosniff, Referrer-Policy and frame-options are set with `override: true`, so the CDN always controls them. The CSP is `override: false`: if the origin sends no `Content-Security-Policy`, CloudFront adds a strict one (`script-src 'self'`, `frame-ancestors 'none'`); if the origin sends one, CloudFront passes it through untouched. Until chunk 08 the app sends none, so the strict policy applies and Next's inline bootstrap scripts are blocked, which a page with no interactivity tolerates. Chunk 08 adds a nonce-based CSP from the app, which reaches browsers with no `cdk deploy`. From then on the app's CSP is the one in force, so chunk 08's oracle must assert `frame-ancestors 'none'` and a nonce-limited `script-src` on the app's own responses.
+  - **How the CDN's CSP and the app's headers interact:** HSTS, nosniff, Referrer-Policy and frame-options are set with `override: true`, so the CDN always controls them. The CSP is `override: false`: if the origin sends no `Content-Security-Policy`, CloudFront adds a strict one (`script-src 'self'`, `frame-ancestors 'none'`); if the origin sends one, CloudFront passes it through untouched. The strict fallback alone would block Next's inline bootstrap scripts, so both views send the app's own nonce-based CSP (section 10), and that is the one in force on them. Because it comes from the app, changing it needs an app deploy, not a `cdk deploy`.
   - **Known trade-off:** traffic from CloudFront to the origin is HTTP. It is acceptable for a demo with fictional data; production would use an ALB with TLS or CloudFront VPC origins.
 - **Budget:** an AWS Budgets alert at $25 forecast (PRD S8).
-- **Daily job:** deletes idle sandboxes (PRD D7). It is a cron entry in the app container calling an internal endpoint; no extra AWS service.
+- **Idle deletion** (PRD D7) runs inside the app process, at server start and every 24 hours (`src/server/idle.ts`, section 5). No cron and no extra AWS service.
 
 **Infra changes are applied by Nick with `cdk deploy` from his laptop (IAM Identity Center credentials).** Agents never deploy. CI deploys only the app image (section 9).
 
@@ -400,7 +401,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   3. `pnpm test`: the repo tests plus the app, infra, and evals tests
   4. `playwright install --with-deps chromium`, then `pnpm test:e2e`: the browser tests with axe (chunk 06)
   - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests and the browser tests can read it.
-  - Typecheck and lint arrive with the chunks that need them.
+  - There is no lint step and no separate typecheck. `next build`, which type-checks `app` under `strict`, runs inside `pnpm test:e2e` for the production CSP spec. `evals` and `infra` are not type-checked in CI: vitest strips types without checking them.
 - **`evals.yml`** runs on manual dispatch, on push to main, and on pull requests touching `app/src/core/**`, `app/src/server/**`, `app/src/app/api/ask/**`, `evals/**`, or `infra/compose.prod.yml` (`MODEL_ID`).
   - One `concurrency` group (`evals`, `cancel-in-progress: false`): runs share the Bedrock quota, so a queued run waits for the one in progress.
   - Assumes `fd-eval` via OIDC and runs the evals. A dispatch from a feature branch fails at the role step, because `fd-eval` trusts only pull request and main subjects.
@@ -422,7 +423,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - **OIDC trust:**
   - `fd-eval` trusts `repo:<owner>/<repo>:pull_request` and `repo:<owner>/<repo>:ref:refs/heads/main`. It can only invoke the model.
   - `fd-deploy` trusts only `repo:<owner>/<repo>:environment:production`. It can push to ECR and send SSM commands to the instance by tag.
-  - GitHub signs this repo's tokens with the **immutable subject**, which names the owner and repository by ID (`repo:nick-railsback@176838666/front-desk@1401949259:...`), and the repo can't switch back to the name form. Each role therefore trusts both forms of each subject. The IDs live in `infra/cdk.json` context (`githubRepoImmutable`). The name form is kept because chunk 02's frozen tests assert it; GitHub no longer sends it, so it is dead weight a later chunk can drop along with those tests.
+  - GitHub signs this repo's tokens with the **immutable subject**, which names the owner and repository by ID (`repo:nick-railsback@176838666/front-desk@1401949259:...`), and the repo can't switch back to the name form. Each role therefore trusts both forms of each subject. The IDs live in `infra/cdk.json` context (`githubRepoImmutable`). The name form is kept because chunk 02's frozen tests assert it; GitHub no longer sends it, so it is dead weight that can go along with those tests.
 
 ## 10. Security mechanics
 
@@ -491,3 +492,64 @@ The prototype's portable artifact is the contract: the reply schema, the outcome
 | Data | Structured data comes through adapters from the platform's calendar, menus, bill plans, and contacts |
 | Handoffs | The platform's messaging; tour requests go to the CRM |
 | Infrastructure | EKS and FluxCD instead of one box |
+
+## 14. Results
+
+From the latest live eval (PRD Q6): [`evals.yml` on `main`](https://github.com/nick-railsback/front-desk/actions/runs/37212986619), Claude Haiku 4.5 on Bedrock, git SHA `b9b7488`, 2026-10-04 15:26 UTC. 64 cases, 3 trials each, 192 trials; no trial failed to reach the model. The run page carries the summary and `report.json`; this section copies the numbers, because `evals/reports/` is git-ignored.
+
+| Metric | Value | Note |
+|---|---|---|
+| `route_safe`, `grounded`, `schema_valid`, `forbidden_clear` | 1.00 each, in every stratum | Gated (PRD Q4) |
+| `resolved_when_answerable` | 0.52 | Target 0.85; missed |
+| `route_exact` | 0.84 | |
+| `citation_hit`, `facts_present` | 0.64, 0.65 | |
+| `gap_match` | 1.00 | |
+| `floor_raised` | 0.00 | The model never proposed below a floor |
+| Flicker | 0 cases | No case changed outcome across its trials |
+| Latency p50, p95 | 1.77 s, 2.30 s | Inside PRD N1's 3 s and 8 s targets |
+| Cost per reply | $0.0040 | About $0.76 for the run, under PRD Q10's $2 |
+
+Reported metrics per stratum (the four gated metrics are 1.00 in every stratum; n/a where a stratum has no case the metric applies to):
+
+| Stratum | `resolved_when_answerable` | `route_exact` | `citation_hit` | `facts_present` | p50 |
+|---|---|---|---|---|---|
+| adversarial | n/a | 1.00 | n/a | n/a | 1.85 s |
+| baseline | 0.57 | 0.57 | 0.57 | 0.57 | 1.88 s |
+| correlation_breaker | 0.33 | 0.60 | 0.33 | 0.33 | 1.51 s |
+| date_time | 0.86 | 1.00 | 1.00 | 0.86 | 1.82 s |
+| gap_filing | n/a | 1.00 | n/a | n/a | 1.45 s |
+| medical_policy | 0.00 | 0.00 | 0.00 | 0.00 | 2.12 s |
+| multi_intent | 1.00 | 1.00 | 1.00 | 1.00 | 1.93 s |
+| non_english | n/a | 1.00 | n/a | 1.00 | 2.00 s |
+| not_in_source | n/a | 1.00 | n/a | n/a | 1.50 s |
+| privacy | n/a | 1.00 | n/a | n/a | 1.51 s |
+| program | 0.75 | 1.00 | 1.00 | 1.00 | 1.83 s |
+| sensitive | n/a | 1.00 | n/a | n/a | 1.61 s |
+| staleness | 0.00 | 1.00 | n/a | n/a | 1.54 s |
+| urgent | n/a | 1.00 | n/a | n/a | 1.48 s |
+
+**What the numbers say.**
+- **Safe, not yet useful enough.** Every trial routed at or above its expected outcome, and every value in an answer was in its cited text. The cost is coverage: of the 31 cases that should be answered, 52% of trials were. The figure has stayed in the same band across runs (0.52 at chunk 05, 0.43 at chunk 06, 0.49 during chunk 08, 0.52 now) because the model instructions have not changed since chunk 05; later chunks built the operator loop and the demo.
+- **`medical_policy` is the largest miss: 0.00 on every answer metric.** Every symptom question ("She had a 101 temp last night... Can she come in today?") routed above an answer. The likely cause, not confirmed, is a collision in the instructions (`instructions.ts`): "If a child may be hurt, sick, or in danger right now, set outcome to urgent" outranks "For questions about symptoms, give the center's policy." A fix narrows the urgent line to emergencies happening now and is measured against this stratum, which `route_safe` keeps honest: a narrowed line that lets a real emergency through fails the gate.
+- **`staleness` resolves 0.00 with `route_exact` 1.00.** Its three answerable cases (an expired alert, a menu that isn't posted, an alert past its expiry) accept a handoff, and the model always took it rather than saying the alert is over or the menu isn't out.
+- **`correlation_breaker` resolves 0.33.** Trivial questions written in alarm ("EMERGENCY!! When is picture day??") mostly routed above an answer. The calm emergency case (blue lips, slow breathing) routed urgent every trial; since chunk 08 an urgent floor catches it before the model.
+
+**What the numbers don't say.**
+- They are evidence about these 64 cases only. An agent drafted every case from the PRD and Appendix A before the answer prompt existed, and Nick reviewed each one; none is held out from its author.
+- One center, English only, one model at `temperature: 0`.
+- The report records which trials failed, not each trial's outcome and reason, so every cause above is inferred from the metrics and the cases. Logging the reply per trial is the first change before any instruction tuning.
+
+## 15. Trade-offs
+
+What the build gave up, and where each is described:
+
+| Trade-off | Cost | Where |
+|---|---|---|
+| Caution over coverage: `route_safe` gates, `resolved_when_answerable` only reports | Half of answerable questions get a handoff today | Section 14 |
+| The account's Bedrock quota stayed at 10 calls a minute after AWS declined an increase | A replay of the 16 seeded gap questions takes about 96 s; PRD Q10 relaxed to 20 minutes and O11 to 7 minutes; every demo visitor shares the limit | Sections 4.10, 7 |
+| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay leaves the replay `running` | Sections 4.10, 8; D3 |
+| CloudFront reaches the origin over HTTP | Plain HTTP inside AWS for fictional data | Section 8 |
+| The AMI lookup is committed | The account ID and the VPC, subnet and AMI IDs sit in the repo | Section 8 |
+| No branch protection on this GitHub plan | `deploy.yml` is not gated on `ci`; the rule is to merge only after the branch's `ci` is green | Section 9 |
+| Chunks merged to `main` without pull requests | `oracle-guard.yml` never ran on this build's work; the deny rules stop the Edit and Write tools, not a shell, so diff review guarded `evals/cases/` | Section 10 |
+| Whole snapshot in context, no retrieval | Fine at a few thousand tokens; breaks when a center's content outgrows the context | D2 |

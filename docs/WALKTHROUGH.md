@@ -2,37 +2,52 @@
 
 Nick's own words, written at each review gate before committing, three lines per chunk. By Monday this is the interview script. Agents don't write this file.
 
-## 01 skeleton
+## 01 baseline
 - What:
 - Why:
 - Where:
 
-## 02 contract-and-seed
+## 02 infra
 - What:
 - Why:
 - Where:
 
-## 03 eval-harness
+## 03 contract-and-seed
 - What:
 - Why:
 - Where:
 
-## 04 pipeline
+## 04 eval-harness
 - What:
 - Why:
 - Where:
 
-## 05 parent-ui
+## 05 pipeline
 - What:
 - Why:
 - Where:
 
-## 06 operator-ui
+## 06 parent-ui
 - What:
 - Why:
 - Where:
 
-## 07 demo-hardening
+## 07 operator-ui
+- What:
+- Why:
+- Where:
+
+## 08 demo-hardening
+- What:
+- Why:
+- Where:
+
+## 08.5 demo-explainers
+- What:
+- Why:
+- Where:
+
+## 09 writeup
 - What:
 - Why:
 - Where:
