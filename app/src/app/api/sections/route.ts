@@ -23,8 +23,12 @@ export async function POST(request: Request): Promise<Response> {
   const sandboxId = sandboxFromCookie(request.headers.get('cookie'));
   if (!body.success || !sandboxId) return Response.json({ error: 'invalid' }, { status: 400 });
   try {
+    const now = new Date();
+    const access = forSandbox(sandboxId);
+    // A deleted sandbox gets the same answer as a missing cookie.
+    if (!(await access.seen(now))) return Response.json({ error: 'invalid' }, { status: 400 });
     const { id, ...fields } = body.data;
-    const section = await forSandbox(sandboxId).saveSection({ ...fields, id: id ?? null }, denverDate(new Date()));
+    const section = await access.saveSection({ ...fields, id: id ?? null }, denverDate(now));
     if (!section) return Response.json({ error: 'not_found' }, { status: 404 });
     return Response.json({ section });
   } catch (err) {

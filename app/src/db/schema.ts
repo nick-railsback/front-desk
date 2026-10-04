@@ -9,6 +9,8 @@ export const sandboxes = pgTable('sandboxes', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
+  // When the visitor dismissed the Try this strip; null while it shows.
+  tryThisDismissedAt: timestamp('try_this_dismissed_at', { withTimezone: true }),
 });
 
 const sandboxId = () =>

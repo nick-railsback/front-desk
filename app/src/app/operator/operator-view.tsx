@@ -26,6 +26,8 @@ export type GapRow = {
 
 export type OperatorData = {
   version: number;
+  // The latest snapshot's publish date, as a Denver calendar date.
+  publishedOn: string;
   summary: Summary;
   unpublished: boolean;
   replay: { running: boolean; completed: number; total: number } | null;
@@ -55,7 +57,7 @@ export function OperatorView({ data }: { data: OperatorData }) {
   return (
     <div className="operator-view">
       <SummaryStrip summary={data.summary} />
-      <PublishBar version={data.version} unpublished={data.unpublished} replay={data.replay} />
+      <PublishBar version={data.version} publishedOn={data.publishedOn} unpublished={data.unpublished} replay={data.replay} />
       <nav aria-label={OPERATOR.areas}>
         <ul className="areas">
           {AREAS.map((a) => (
@@ -146,7 +148,7 @@ async function readProgress(): Promise<Progress | null> {
   }
 }
 
-function PublishBar({ version, unpublished, replay }: { version: number; unpublished: boolean; replay: Progress | null }) {
+function PublishBar({ version, publishedOn, unpublished, replay }: { version: number; publishedOn: string; unpublished: boolean; replay: Progress | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   // A replay still running when the page loaded is followed, too.
@@ -202,11 +204,14 @@ function PublishBar({ version, unpublished, replay }: { version: number; unpubli
 
   return (
     <div className="publish-bar">
-      <p className="version">{OPERATOR.version(version)}</p>
+      <p className="version">{OPERATOR.version(version, publishedOn)}</p>
       {unpublished && <p className="unpublished">{OPERATOR.unpublished}</p>}
-      <button type="button" disabled={busy || polling} onClick={publish}>
+      <button type="button" disabled={busy || polling} aria-describedby="publish-help" onClick={publish}>
         {OPERATOR.publish}
       </button>
+      <p id="publish-help" className="publish-help">
+        {OPERATOR.publishHelp}
+      </p>
       <div role="status" className="progress">
         {progress && progress.total > 0 && (
           <>

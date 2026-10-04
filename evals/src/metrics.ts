@@ -17,6 +17,7 @@ export type TrialRecord = {
   latencyMs: number;
   usage: { input: number; cachedInput: number; output: number };
   gapLabel: string | null;
+  failure: string | null; // why the model call or its output failed, or null
 };
 
 // USD per token.

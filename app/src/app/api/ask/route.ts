@@ -34,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
     const body = Body.safeParse(await request.json().catch(() => null));
     if (!body.success) return Response.json({ error: 'bad_request' }, { status: 400 });
     let sandboxId = sandboxFromCookie(request.headers.get('cookie'));
-    if (!sandboxId || !(await forSandbox(sandboxId).exists())) {
+    if (!sandboxId || !(await forSandbox(sandboxId).seen(now))) {
       sandboxId = created = await createSandbox(now);
     }
     const result = await ask({ sandboxId, message: body.data.message, priorTurns: body.data.priorTurns, now }, { model: getModel(), clock: realClock });

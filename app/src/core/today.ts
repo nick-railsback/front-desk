@@ -13,6 +13,7 @@ const OFFICE_OPENING_TIME = '7:00 AM';
 const MINUTES = new Intl.DateTimeFormat('en-US', { timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const CLOCK_TIME = new Intl.DateTimeFormat('en-US', { timeZone: TIMEZONE, hour: 'numeric', minute: '2-digit' });
 const LONG_DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const CALENDAR_DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' });
 
 // Minutes since midnight on the Denver wall clock.
 export function denverMinutes(now: Date): number {
@@ -24,6 +25,11 @@ export function denverMinutes(now: Date): number {
 // "Thursday, November 26, 2026" for a YYYY-MM-DD date.
 export function longDate(date: string): string {
   return LONG_DATE.format(new Date(`${date}T12:00:00Z`));
+}
+
+// "November 26, 2026" for a YYYY-MM-DD date.
+export function calendarDate(date: string): string {
+  return CALENDAR_DATE.format(new Date(`${date}T12:00:00Z`));
 }
 
 // "10:30 PM" in Denver.

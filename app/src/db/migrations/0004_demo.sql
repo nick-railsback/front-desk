@@ -1,0 +1,1 @@
+ALTER TABLE "sandboxes" ADD COLUMN "try_this_dismissed_at" timestamp with time zone;

@@ -19,6 +19,11 @@ const LEXICONS: Lexicon[] = [
       [
         'not breathing',
         'stopped breathing',
+        // Blue lips and slow or shallow breathing, said calmly (PRD T1).
+        'lips? (?:\\w+ ){0,4}?(?:blue|purple)',
+        'blue lips',
+        'breathing (?:\\w+ ){0,3}?(?:slow|shallow|weird|funny)',
+        '(?:slow|shallow) breathing',
         "can(?:no|')?t breathe",
         'unconscious',
         'not responding',

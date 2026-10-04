@@ -1,11 +1,12 @@
 // The only module that touches the database. Every read and write of sandbox
 // data goes through `forSandbox(sandboxId)`, and every statement it runs
-// filters on, or inserts, that sandbox ID: that filter is the isolation.
+// filters on, or inserts, that sandbox ID: that filter is the isolation. The
+// module-level deletes remove whole sandboxes and read nothing.
 
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate as runMigrations } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -137,8 +138,20 @@ export function forSandbox(sandboxId: string) {
       };
     },
 
-    async exists(): Promise<boolean> {
-      const rows = await db().select({ id: sandboxes.id }).from(sandboxes).where(eq(sandboxes.id, sandboxId)).limit(1);
+    // Records activity at `now`. False when the sandbox no longer exists.
+    async seen(now: Date): Promise<boolean> {
+      const rows = await db().update(sandboxes).set({ lastSeenAt: now }).where(eq(sandboxes.id, sandboxId)).returning({ id: sandboxes.id });
+      return rows.length > 0;
+    },
+
+    async tryThisDismissed(): Promise<boolean> {
+      const [row] = await db().select({ at: sandboxes.tryThisDismissedAt }).from(sandboxes).where(eq(sandboxes.id, sandboxId));
+      return row?.at != null;
+    },
+
+    // False when the sandbox no longer exists.
+    async dismissTryThis(now: Date): Promise<boolean> {
+      const rows = await db().update(sandboxes).set({ tryThisDismissedAt: now }).where(eq(sandboxes.id, sandboxId)).returning({ id: sandboxes.id });
       return rows.length > 0;
     },
 
@@ -292,9 +305,9 @@ export function forSandbox(sandboxId: string) {
 
     // Every published snapshot, oldest first: a reply's citations are drawn
     // from the version it recorded.
-    async snapshots(): Promise<{ version: number; sections: Section[] }[]> {
+    async snapshots(): Promise<{ version: number; sections: Section[]; publishedAt: string }[]> {
       const rows = await db().select().from(snapshots).where(eq(snapshots.sandboxId, sandboxId)).orderBy(snapshots.version);
-      return rows.map((s) => ({ version: s.version, sections: s.sections }));
+      return rows.map((s) => ({ version: s.version, sections: s.sections, publishedAt: s.publishedAt.toISOString() }));
     },
 
     async draft(): Promise<Section[]> {
@@ -421,6 +434,22 @@ export type StoredReply = {
   latencyMs: number;
   usage: AnswerRecord['usage'];
 };
+
+// Deletes the sandbox. Every other table's rows go with it through their
+// ON DELETE CASCADE foreign keys.
+export async function deleteSandbox(sandboxId: string): Promise<void> {
+  await db().delete(sandboxes).where(eq(sandboxes.id, sandboxId));
+}
+
+// Deletes every sandbox idle for more than 7 days before `now` (PRD D7), with
+// all its data, and returns how many went.
+export async function deleteIdleSandboxes(now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - IDLE_DAYS * 86_400_000);
+  const rows = await db().delete(sandboxes).where(lt(sandboxes.lastSeenAt, cutoff)).returning({ id: sandboxes.id });
+  return rows.length;
+}
+
+const IDLE_DAYS = 7;
 
 // Reserves one of the day's model calls across every sandbox. False when the
 // day's cap is reached. One statement, so concurrent messages cannot both take

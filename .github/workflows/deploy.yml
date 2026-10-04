@@ -65,3 +65,7 @@ jobs:
         env:
           APP_URL: ${{ vars.APP_URL }}
         run: curl --fail --silent --show-error --retry 20 --retry-delay 6 --retry-all-errors "$APP_URL/api/health"
+      - name: Ask one question through the CDN
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: bash .github/scripts/check-answer.sh "$APP_URL"

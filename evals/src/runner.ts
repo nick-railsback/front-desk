@@ -52,6 +52,8 @@ export type Report = {
   overall: Metrics;
   strata: Record<string, Metrics>;
   failingCaseIds: string[];
+  // Every trial in case order, then trial order, with its failure text.
+  trials: { caseId: string; trial: number; failure: string | null }[];
 };
 
 function latestSnapshot(c: Case): Snapshot {
@@ -124,10 +126,13 @@ function summary(report: Report): string {
   const overall = metricCells(report.overall);
   const strata = Object.entries(report.strata);
   const header = overall.map(([name]) => name);
+  const failed = report.trials.filter((t) => t.failure !== null);
   return [
     '# Eval summary',
     '',
     `Cases: ${report.caseCount}, trials: ${report.trialCount}`,
+    `Trials that failed to reach the model: ${failed.length}`,
+    `Cases with a trial that failed to reach the model: ${list([...new Set(failed.map((t) => t.caseId))])}`,
     '',
     `- Git SHA: ${report.gitSha}`,
     `- Model: ${report.modelId}`,
@@ -179,6 +184,8 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
     overall,
     strata,
     failingCaseIds,
+    // An injected answer function written before `failure` existed leaves it out.
+    trials: results.flatMap((r) => r.trials.map(({ record }, n) => ({ caseId: r.case.id, trial: n, failure: record.failure ?? null }))),
   };
 
   mkdirSync(options.outDir, { recursive: true });
