@@ -13,3 +13,6 @@ playwright-report/
 app/AGENTS.md
 app/CLAUDE.md
 *.tsbuildinfo
+# Mutation-control run logs from the chunk harness: tens of MB each, so kept
+# local only (feature-close H1).
+docs/chunks/**/oracle-mutation-*.log
