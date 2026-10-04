@@ -7,9 +7,10 @@
 // Each exchange keeps one stable key, and its reply mounts inside it whole,
 // in one update, so the log announces each reply once (PRD A2).
 //
-// The Try this strip sits above the conversation. Its first step, activated
-// on the operator view, brings the browser here with ?try=1, and the
-// question is asked on arrival.
+// The demo section sits below the conversation and the message input, out of
+// a parent's way. The Try this strip's first step, activated on the operator
+// view, brings the browser here with ?try=1, and the question is asked on
+// arrival.
 
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { DEMO, FIXED_TEXT, PARENT } from '../../core/copy';
@@ -98,7 +99,6 @@ export function ParentView({ tryThis }: { tryThis: { dismissed: boolean } }) {
 
   return (
     <div className="parent-view">
-      <DemoStrip dismissed={tryThis.dismissed} onAsk={(q) => void send(q)} />
       <div role="log" aria-label={PARENT.conversation} className="log">
         {exchanges.map((e) => (
           <div key={e.id} className="exchange">
@@ -162,6 +162,7 @@ export function ParentView({ tryThis }: { tryThis: { dismissed: boolean } }) {
           {PARENT.newConversation}
         </button>
       )}
+      <DemoStrip view="parent" dismissed={tryThis.dismissed} onAsk={(q) => void send(q)} />
     </div>
   );
 }

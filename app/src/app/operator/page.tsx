@@ -103,7 +103,7 @@ export default async function OperatorPage() {
   }
   return (
     <main>
-      <DemoStrip dismissed={loaded.dismissed} />
+      <DemoStrip view="operator" dismissed={loaded.dismissed} />
       <OperatorView data={loaded.data} />
     </main>
   );

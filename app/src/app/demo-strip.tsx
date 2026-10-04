@@ -1,9 +1,14 @@
 'use client';
 
-// The demo's own controls on both views: the Try this strip (PRD D5) and
-// Reset demo (D2). The strip walks a visitor through the loop and can be
-// dismissed for the sandbox; Reset demo stays after that, and brings the
-// strip back with a fresh sandbox.
+// The demo section on both views: the gap explainer, the Try this strip
+// (PRD D5) and Reset demo (D2). The explainer says what a gap is, in each
+// view's words; it is a native <details>, so it opens by tap or keyboard and
+// needs no script. The strip walks a visitor through the loop and can be
+// dismissed for the sandbox; the explainer and Reset demo stay after that,
+// and Reset demo brings the strip back with a fresh sandbox.
+//
+// The section's id, "demo", is the target of the parent view's "How this
+// demo works" link in page.tsx; tabIndex -1 lets that link move focus to it.
 //
 // The Reset confirmation is a native <dialog> opened with showModal(): the
 // browser makes the page behind it inert, keeps focus inside it, and closes
@@ -15,7 +20,7 @@ import { DEMO } from '../core/copy';
 
 // On the parent view, asks the question in place. Without it, the parent view
 // asks it on arrival: see TRY_PARAM in parent/parent-view.tsx.
-export function DemoStrip({ dismissed, onAsk }: { dismissed: boolean; onAsk?: (question: string) => void }) {
+export function DemoStrip({ view, dismissed, onAsk }: { view: 'parent' | 'operator'; dismissed: boolean; onAsk?: (question: string) => void }) {
   const router = useRouter();
   const [hidden, setHidden] = useState(dismissed);
   const [dismissFailed, setDismissFailed] = useState(false);
@@ -37,7 +42,11 @@ export function DemoStrip({ dismissed, onAsk }: { dismissed: boolean; onAsk?: (q
   }
 
   return (
-    <div className="demo">
+    <div className="demo" id="demo" tabIndex={-1}>
+      <details className="explainer">
+        <summary>{DEMO.explainer[view].label}</summary>
+        <p>{DEMO.explainer[view].text}</p>
+      </details>
       {!hidden && (
         <section aria-label={DEMO.tryThis} className="try-this">
           <h2>{DEMO.tryThis}</h2>

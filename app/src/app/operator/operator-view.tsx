@@ -71,11 +71,11 @@ export function OperatorView({ data }: { data: OperatorData }) {
       </nav>
       {area === 'questions' && <Questions questions={data.questions} />}
       {area === 'gaps' && (
-        <Gaps gaps={data.gaps} onAnswer={(g) => edit({ id: null, title: g.label, text: '', visibility: 'parent', phrasings: g.phrasings })} />
+        <Gaps gaps={data.gaps} onAnswer={(g) => edit({ id: null, title: g.label, text: '', visibility: 'parent', phrasings: g.phrasings, fromGap: true })} />
       )}
       {area === 'center' && (
         <section aria-label={OPERATOR.centerInfo} className="area">
-          <button type="button" className="secondary" onClick={() => edit({ id: null, title: '', text: '', visibility: 'parent', phrasings: [] })}>
+          <button type="button" className="secondary" onClick={() => edit({ id: null, title: '', text: '', visibility: 'parent', phrasings: [], fromGap: false })}>
             {OPERATOR.addSection}
           </button>
           {editing && <Editor key={editing.key} editing={editing} onDone={() => setEditing(null)} />}
@@ -90,7 +90,7 @@ export function OperatorView({ data }: { data: OperatorData }) {
                   type="button"
                   className="secondary"
                   aria-label={OPERATOR.edit(s.title)}
-                  onClick={() => edit({ id: s.id, title: s.title, text: s.text, visibility: s.visibility, phrasings: [] })}
+                  onClick={() => edit({ id: s.id, title: s.title, text: s.text, visibility: s.visibility, phrasings: [], fromGap: false })}
                 >
                   {OPERATOR.editLabel}
                 </button>
