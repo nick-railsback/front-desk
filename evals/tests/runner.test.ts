@@ -218,6 +218,20 @@ describe('gated metrics', () => {
     expect(exitCode).not.toBe(0);
   });
 
+  // A failed call becomes a safe system_error handoff that every other gated
+  // metric passes, so an outage would pass the run (feature-close F1).
+  test('schema_valid drops when a model call failed before returning output', async () => {
+    const { report, exitCode } = await runWith(
+      'gated-answer',
+      trial(
+        { outcome: 'handoff', reason: 'system_error', text: 'Sorry, something went wrong on our end.' },
+        { modelCalled: true, outputValid: true, proposedOutcome: null, floor: 'answer', failure: 'model call failed: Error: unreachable' },
+      ),
+    );
+    expectOnlyBroken(report, 'schema_valid');
+    expect(exitCode).not.toBe(0);
+  });
+
   test('schema_valid holds when a trial made no model call', async () => {
     const { report, exitCode } = await runWith(
       'gated-urgent',
