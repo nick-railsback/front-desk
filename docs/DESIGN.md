@@ -1,6 +1,6 @@
 # AI Front Desk: Design
 
-Status: the design as built, 2026-10-04. It explains how the build meets `docs/PRD.md`, what the live eval measured (section 14) and what was traded away (section 15). The PRD is the contract: it wins any disagreement, and acceptance criteria come only from it, never from here.
+Status: the design as built, 2026-10-04. It explains how the build meets `docs/PRD.md`, what the live eval measured (section 14) and what was traded away (section 15). Defects found after the build are in `docs/audits/2026-10-04-front-desk-feature-close.md`; the claims here were corrected against it. The PRD is the contract: it wins any disagreement, and acceptance criteria come only from it, never from here.
 
 ## 1. Principles
 
@@ -164,7 +164,7 @@ The model input is built in a fixed order so the stable parts can be cached:
    - Every parent-visible section, rendered as `[illness] Illness (updated 2026-09-30)` followed by the body. The bracket holds the section ID the model cites.
    - Data sections rendered to text, one entry per line:
      - `[hours]`, `[tuition]`, `[contacts]`, `[menu]`, `[alerts]`;
-     - `[data:calendar]`, which contains:
+     - `[calendar]`, which contains:
        - the Today line, with open or closed;
        - one line per calendar entry from today through 60 days ahead (holidays from the seed calendar, events, closures), each with OPEN or CLOSED and, for a closed day, the next open day.
    - Expired alerts, past menus, and past events are filtered out here, before the model sees them (T6).
@@ -231,7 +231,7 @@ The same applies to minutes, days, weeks, and percent. Weekday names and spelled
 
 The set of values from the answer must be a subset of the set from the source. Test this module hardest; it is the signature trust feature.
 
-The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. The unit tests are the real oracle for the extractor itself.
+The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. No test imports the extractor directly. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and those are the only guard on it, because the metric cannot disagree with the guard (feature-close F2, F23).
 
 ### 4.8 Today card and expectations (`today.ts`)
 
@@ -253,7 +253,7 @@ Filing applies only when the reason is `not_in_source` or `grounding_failed`. Ta
 4. **Pacing.** The account allows 10 model calls a minute, so a burst comes back throttled. Sequential calls, `answer()`'s own throttle retry, and one further 6 s wait and re-run for a question still throttled keep a live replay near that rate: 16 seeded questions in about 96 s, 60 in about 6 minutes (PRD O11).
 5. **The UI** polls `GET /api/replay` (no ID: the sandbox's latest replay) right after publishing and then every second, showing `<completed> of <total>`, and refreshes the page when the replay is done.
 
-This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay leaves its row `running`; the next publish starts a new one.
+This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running`. The operator view then polls it forever and keeps Publish disabled for that sandbox until Reset demo (feature-close F7, not yet fixed). A Reset during a replay does not stop it: the remaining questions still call the model (F8).
 
 ## 5. Data model (Drizzle, Postgres 16)
 
@@ -340,8 +340,8 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 
 ## 7. Evals and tests
 
-- **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth only where the logic is ours and complicated: grounding normalization (each value type and equivalent form), the floor lexicons (positive cases and the non-trigger words), and Denver calendar math. No tests that re-verify proven packages.
-- **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of sandbox data. They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
+- **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth was planned where the logic is ours and complicated: grounding normalization, the floor lexicons and Denver calendar math. As built, grounding and the floors are tested through `ask()` instead: 12 answers for grounding (`app/tests/pipeline/answers.test.ts`), 19 messages for the floors (`app/tests/pipeline/outcomes.test.ts`) plus the blue-lips route test (`app/tests/demo/floor.test.ts`). The bare-word non-triggers have no direct test (feature-close F23). No tests that re-verify proven packages.
+- **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of data `read()` returns. `replays` is outside that set; its statements filter on the sandbox ID but no isolation test covers them (feature-close F26). They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
 - **e2e tests (Playwright).** `pnpm test:e2e`, never part of `pnpm test`. They start `next dev` with the fixture model and reach each reason through its `fixture:<reason> ` prefix, read Postgres directly to check what was stored, and run axe on each view state (PRD A1).
 - **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. The frozen tests drive it with scripted replies on a fake clock.
 - **Eval CLI (`evals/src/cli.ts`, `pnpm eval`).** Wires the runner to core `answer()` with `getModel()`, core's `isGrounded`, and the real clock, with no database: each trial's data sections and open gaps come from `seed(case.now)`. Pacing: concurrency 2 and one start every 6,000 ms for Bedrock; concurrency 8 and no interval with `MODEL_MODE=fixture`. Reports go to `evals/reports/` (git-ignored).
@@ -499,12 +499,12 @@ From the latest live eval (PRD Q6): [`evals.yml` on `main`](https://github.com/n
 
 | Metric | Value | Note |
 |---|---|---|
-| `route_safe`, `grounded`, `schema_valid`, `forbidden_clear` | 1.00 each, in every stratum | Gated (PRD Q4) |
+| `route_safe`, `grounded`, `schema_valid`, `forbidden_clear` | 1.00 each, in every stratum | Gated (PRD Q4); see what they can't detect below |
 | `resolved_when_answerable` | 0.52 | Target 0.85; missed |
 | `route_exact` | 0.84 | |
 | `citation_hit`, `facts_present` | 0.64, 0.65 | |
 | `gap_match` | 1.00 | |
-| `floor_raised` | 0.00 | The model never proposed below a floor |
+| `floor_raised` | 0.00 | The model never proposed below a floor. An urgent floor skips the model, so its false positives never count here |
 | Flicker | 0 cases | No case changed outcome across its trials |
 | Latency p50, p95 | 1.77 s, 2.30 s | Inside PRD N1's 3 s and 8 s targets |
 | Cost per reply | $0.0040 | About $0.76 for the run, under PRD Q10's $2 |
@@ -537,6 +537,8 @@ Reported metrics per stratum (the four gated metrics are 1.00 in every stratum; 
 **What the numbers don't say.**
 - They are evidence about these 64 cases only. An agent drafted every case from the PRD and Appendix A before the answer prompt existed, and Nick reviewed each one; none is held out from its author.
 - One center, English only, one model at `temperature: 0`.
+- **The gates can pass a broken run.** A failed model call becomes a `system_error` handoff that all four gated metrics count as safe, so a run where the model was unreachable still scores 1.00; this run's zero failure count is what rules that out (feature-close F1). `grounded` re-runs the pipeline's own `isGrounded` on the same text and sections, so it can only catch drift between the two (F2). No case trips an urgent floor unless urgent is expected, so floor false positives are invisible to the suite (F4).
+- **The eval reports after the fact.** On `main`, `evals.yml` starts with `deploy.yml` and finishes about 18 minutes after the change is serving; no step rolls back (F9).
 - The report records which trials failed, not each trial's outcome and reason, so every cause above is inferred from the metrics and the cases. Logging the reply per trial is the first change before any instruction tuning.
 
 ## 15. Trade-offs
@@ -547,9 +549,10 @@ What the build gave up, and where each is described:
 |---|---|---|
 | Caution over coverage: `route_safe` gates, `resolved_when_answerable` only reports | Half of answerable questions get a handoff today | Section 14 |
 | The account's Bedrock quota stayed at 10 calls a minute after AWS declined an increase | A replay of the 16 seeded gap questions takes about 96 s; PRD Q10 relaxed to 20 minutes and O11 to 7 minutes; every demo visitor shares the limit | Sections 4.10, 7 |
-| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay leaves the replay `running` | Sections 4.10, 8; D3 |
+| One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay leaves the replay `running` and Publish disabled for that sandbox | Sections 4.10, 8; D3 |
 | CloudFront reaches the origin over HTTP | Plain HTTP inside AWS for fictional data | Section 8 |
 | The AMI lookup is committed | The account ID and the VPC, subnet and AMI IDs sit in the repo | Section 8 |
+| `evals.yml` on `main` runs alongside `deploy.yml` | A regression is reported about 18 minutes after it is live, and nothing rolls back | Sections 9, 14 |
 | No branch protection on this GitHub plan | `deploy.yml` is not gated on `ci`; the rule is to merge only after the branch's `ci` is green | Section 9 |
 | Chunks merged to `main` without pull requests | `oracle-guard.yml` never ran on this build's work; the deny rules stop the Edit and Write tools, not a shell, so diff review guarded `evals/cases/` | Section 10 |
 | Whole snapshot in context, no retrieval | Fine at a few thousand tokens; breaks when a center's content outgrows the context | D2 |
