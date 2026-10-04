@@ -496,7 +496,7 @@ The prototype's portable artifact is the contract: the reply schema, the outcome
 
 ## 14. Results
 
-From the latest live eval (PRD Q6): [`evals.yml` on `main`](https://github.com/nick-railsback/front-desk/actions/runs/37212986619), Claude Haiku 4.5 on Bedrock, git SHA `b9b7488`, 2026-10-04 15:26 UTC. 64 cases, 3 trials each, 192 trials; no trial failed to reach the model. The run page carries the summary and `report.json`; this section copies the numbers, because `evals/reports/` is git-ignored.
+From the live eval (PRD Q6): [`evals.yml` on `main`](https://github.com/nick-railsback/front-desk/actions/runs/37212986619), Claude Haiku 4.5 on Bedrock, git SHA `b9b7488`, 2026-10-04 15:26 UTC. 64 cases, 3 trials each, 192 trials; no trial failed to reach the model. The run page carries the summary and `report.json`; this section copies the numbers, because `evals/reports/` is git-ignored. The latest run, [`f1b3cce` at 20:31 UTC](https://github.com/nick-railsback/front-desk/actions/runs/37232383698), holds every gated metric at 1.00 with `resolved_when_answerable` 0.48, p50 1.81 s and $0.004 per reply; `SUBMISSION.md` quotes that run.
 
 | Metric | Value | Note |
 |---|---|---|
