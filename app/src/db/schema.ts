@@ -65,7 +65,7 @@ export const turns = pgTable(
     inputTokens: integer('input_tokens'),
     cachedInputTokens: integer('cached_input_tokens'),
     outputTokens: integer('output_tokens'),
-    // When the parent sent this reply to the front desk; chunk 07's Questions list reads it.
+    // When the parent sent this reply to the front desk; the operator's Questions list reads it.
     sentToFrontDesk: timestamp('sent_to_front_desk', { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.sandboxId, t.id] })],

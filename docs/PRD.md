@@ -1,12 +1,12 @@
 # AI Front Desk: Product Requirements
 
-Version 1.0 (demo build). Owner: Nick. Written 2026-10-01.
+Version 1.0 (demo build). Written 2026-10-01.
 
 ## 0. How to use this document
 
-This is the contract for the prototype. Every requirement has an ID (P3, T2, O9) so chunk specs can cite it in their `Source:` lines. Requirements describe observable behavior and invariants. How the system is built lives in `docs/DESIGN.md`, which constrains plans and never specs. If this document and the design disagree, this document wins and the design changes.
+This is the contract for the prototype. Every requirement has an ID (P3, T2, O9) so specs and tests can cite it. Requirements describe observable behavior and invariants. How the system is built lives in `docs/DESIGN.md`, which constrains plans and never specs. If this document and the design disagree, this document wins and the design changes.
 
-Everything in sections 4 through 11 ships. Section 12 lists what is deliberately not built; those items are written up in the submission, not implemented.
+Everything in sections 4 through 11 ships. Section 12 lists what is deliberately not built; those items are written up in the README, not implemented.
 
 ## 1. Problem and goal
 
@@ -306,7 +306,7 @@ Outcomes rank answer < handoff < urgent. The final outcome is the higher of the 
 | Database-enforced tenant isolation (row-level security) | Tenant scoping already lives in one data-access module |
 | Retrieval over large corpora | Embeddings in the existing Postgres when a center's content outgrows the model context |
 
-## 13. What the submission reports
+## 13. What the write-up reports
 
 The one-page write-up states:
 - the demo URL and the 60-second loop;

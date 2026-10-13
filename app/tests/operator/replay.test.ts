@@ -106,7 +106,7 @@ describe('replay tally', () => {
 });
 
 // A deploy restarts the app mid-replay and leaves its row running, with no
-// process left to finish it (feature-close F7).
+// process left to finish it (review F7).
 describe('a replay left running', () => {
   async function leaveRunning(id: string, startedAgo: string): Promise<void> {
     await sql().query(
@@ -131,7 +131,7 @@ describe('a replay left running', () => {
 });
 
 // Reset demo deletes the sandbox, replays and all, while its replay runs on
-// in the process (feature-close F8).
+// in the process (review F8).
 describe('a replay whose sandbox is deleted', () => {
   test('stops calling the model', async () => {
     const recorded = answeringModel();

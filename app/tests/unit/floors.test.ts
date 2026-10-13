@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'vitest';
 import { floorFor } from '../../src/core/floors';
 
-describe('everyday messages that name an urgent word without an emergency (feature-close F3)', () => {
+describe('everyday messages that name an urgent word without an emergency (review F3)', () => {
   test.each([
     ['a device is not responding', 'The parent app is not responding when I try to pay tuition.'],
     ['a child is missing an item', 'My daughter is missing her jacket, did anyone find it?'],
@@ -27,7 +27,7 @@ describe('the narrowed branches still fire on the emergency', () => {
   });
 });
 
-describe('plain statements of an emergency (feature-close F5)', () => {
+describe('plain statements of an emergency (review F5)', () => {
   test.each([
     ['trouble breathing', 'emergency', 'My son is having trouble breathing right now.'],
     ['will not wake up', 'emergency', 'She passed out and will not wake up.'],

@@ -486,7 +486,7 @@ describe('follow-up context', () => {
   );
 
   // The route takes prior turns from the client, so their size is the
-  // client's to choose (feature-close F6).
+  // client's to choose (review F6).
   test(
     'follow-up context: each prior turn reaches the model input cut to at most 2,000 characters',
     async () => {

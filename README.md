@@ -25,14 +25,31 @@ Hours, calendar, menus and tuition come from center records; operators only writ
 
 - **The AI proposes, code decides.** One model call per message, forced into a fixed shape: answer, hand off, or urgent, plus citations. Code checks every price, time, date and temperature against the cited text; a wrong fee never ships.
 - **Safety text is written by people.** Urgent and handoff replies are fixed wording, never generated.
-- **Measured before every release.** 64 test questions across 14 categories, each run 3 times against the live model. Latest run: 100% of 192 trials routed safely, grounded in the cited text and leaked nothing staff-only, at a median 1.8 seconds and $0.004 per reply.
+- **Measured on every push to main.** 64 test questions across 14 categories, each run 3 times against the live model. Latest run: 100% of 192 trials routed safely, grounded in the cited text and leaked nothing staff-only, at a median 1.8 seconds and $0.004 per reply.
+- **Coverage is the honest miss.** The same run answered 48% of the questions it should have answered, against a target of 85%; the rest got a handoff. Symptom questions (fever, rash) all went to a person instead of the illness policy. That is the first fix, and the safety gate fails the run if the fix goes too far. The numbers, per category, are in `docs/DESIGN.md` section 14.
 
 ## Built with
 
 TypeScript and Next.js; Postgres; Claude Haiku 4.5 on Amazon Bedrock through IAM roles, no API keys; AWS CDK, EC2 and CloudFront; GitHub Actions deploying through OIDC; Playwright; a live eval suite gating CI.
 
-## What's next on the platform
+## How it was built
 
-Designed for, not built: Spanish, platform sign-in and roles, live calendar and billing data, handoffs into the platform's messaging and CRM, and fleet-level insight into which gaps every center shares.
+Eleven milestones, each through the [feature-chunker](https://github.com/nick-railsback/feature-chunker) lifecycle: a spec citing the PRD, acceptance tests written blind from that spec and proven failing, a plan gate, implementation, a verification gate, and a retro. A different model then reviewed the whole diff cold and found 34 issues; the demo-visible ones were fixed test-first. Read `docs/WALKTHROUGH.md` for the milestones and `docs/REVIEW.md` for the review. The contract is `docs/PRD.md`; the as-built design, results and trade-offs are in `docs/DESIGN.md`.
+
+## Run it locally
+
+```
+pnpm install
+docker compose -f infra/compose.dev.yml up -d db
+pnpm dev          # fixture model, no AWS needed
+export DATABASE_URL=postgres://frontdesk:frontdesk@localhost:5432/frontdesk
+pnpm test         # repo, unit, DB and infra tests (needs gitleaks on PATH)
+pnpm test:e2e     # Playwright with axe
+pnpm eval         # the live eval; needs an AWS profile with Bedrock access
+```
+
+## Designed for, not built
+
+Spanish, sign-in and roles, live calendar and billing data from a childcare platform's own records, handoffs into its messaging and CRM, and fleet-level insight into which gaps every center shares.
 
 The center and everyone in it are fictional.

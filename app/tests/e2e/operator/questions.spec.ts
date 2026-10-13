@@ -100,7 +100,7 @@ test.describe('question rows', () => {
       expect(text, `${t.reason}: the row does not say how long ago`).toMatch(t.ago);
       expect(text, `${t.reason}: the row does not show its outcome`).toMatch(new RegExp(`\\b${t.outcome}\\b`, 'i'));
       expect(text, `${t.reason}: the row does not show its reason`).toMatch(reasonPattern(t.reason));
-      // Through copy.ts, not the enum with its underscores swapped (feature-close F24).
+      // Through copy.ts, not the enum with its underscores swapped (review F24).
       expect(text, `${t.reason}: the row's reason is not the copy.ts label`).toContain(OPERATOR.reasons[t.reason as Reason]);
       for (const title of t.citesTitles) expect(text, `${t.reason}: the row does not show the cited title ${title}`).toContain(title);
       if (t.sent) expect(text, `${t.reason}: a sent reply has no badge`).toMatch(/sent to front desk/i);

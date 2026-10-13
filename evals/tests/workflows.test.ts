@@ -48,7 +48,7 @@ function jobPermissions(job: Job): Record<string, string> {
 }
 
 // The eval workflow runs on manual dispatch, on push to main, and on pull
-// requests (chunk 05; evals/tests/pipeline/eval-workflow.test.ts checks the
+// requests (evals/tests/pipeline/eval-workflow.test.ts checks the
 // filters). Its one eval job alone
 // gets id-token: write to assume a role through OIDC, runs the runner with
 // nothing that swallows a non-zero exit, appends summary.md to the step

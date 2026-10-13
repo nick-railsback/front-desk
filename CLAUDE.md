@@ -3,7 +3,7 @@
 Mobile-first AI front desk prototype for one fictional childcare center: parent chat plus operator console.
 - Contract: `docs/PRD.md`
 - Design: `docs/DESIGN.md`
-- Chunk state: `docs/chunks/front-desk/`
+- How it was built: `docs/WALKTHROUGH.md`; the post-build review: `docs/REVIEW.md`
 
 ## Commands
 
@@ -11,15 +11,15 @@ Mobile-first AI front desk prototype for one fictional childcare center: parent 
 - `docker compose -f infra/compose.dev.yml up -d db`: local Postgres
 - `pnpm dev`: runs with `MODEL_MODE=fixture` by default
 - `pnpm test`, `pnpm test:e2e`
-- `pnpm eval`: needs Nick's AWS SSO profile; live model calls
+- `pnpm eval`: needs an AWS profile with Bedrock access; live model calls
 
 ## Standing rules
 
 Most of these are also enforced by deny rules, hooks, or CI. This is the teaching half.
 
-1. All feature work goes through feature-chunker. Propose git actions (init, branch, commit, push) for Nick's approval; never run one without it.
+1. Feature work follows the [feature-chunker](https://github.com/nick-railsback/feature-chunker) lifecycle: spec, blind-written tests, plan gate, implement, verify, retro. Propose git actions (branch, commit, push) for approval; never run one without it.
 2. Never deploy. No `cdk deploy`, no `aws ssm send-command`.
-3. Never edit `evals/cases/`. Changes there need Nick and the `oracle-change` label.
+3. Never edit `evals/cases/`. Changes there need a human and the `oracle-change` label.
 4. `app/src/core/` is pure:
    - no `Date.now()`, no network, no DB;
    - the clock and the model are injected.

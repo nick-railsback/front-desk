@@ -1,6 +1,6 @@
 // file size: no tracked file is larger than 5 MB, so a run log written by a
 // harness cannot quietly make every clone and every clean-clone test copy
-// hundreds of megabytes (feature-close H1, F34).
+// hundreds of megabytes (review H1, F34).
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

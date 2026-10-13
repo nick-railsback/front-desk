@@ -1,10 +1,11 @@
 [extend]
 useDefault = true
 
-# chunk-check.sh pins each frozen test file by SHA-256 in state.json; a test
-# file named for secrets makes that hash look like an API key.
+# Build-note state files that once lived under docs/chunks/ pinned test files by
+# SHA-256; a test file named for secrets makes that hash look like an API key.
+# CI scans full history, so the allowlist stays until that history is rewritten.
 [[allowlists]]
-description = "SHA-256 test pins in feature-chunker state files"
+description = "SHA-256 test pins in historical build-note state files"
 paths = ['''docs/chunks/.*/state\.json$''']
 regexTarget = "line"
 regexes = ['''^\s*"tests/[^"]+": "[0-9a-f]{64}",?$''']

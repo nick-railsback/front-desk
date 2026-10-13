@@ -1,6 +1,6 @@
 # AI Front Desk: Design
 
-Status: the design as built, 2026-10-04. It explains how the build meets `docs/PRD.md`, what the live eval measured (section 14) and what was traded away (section 15). Defects found after the build are in `docs/audits/2026-10-04-front-desk-feature-close.md`; the claims here were corrected against it. The PRD is the contract: it wins any disagreement, and acceptance criteria come only from it, never from here.
+Status: the design as built, 2026-10-04. It explains how the build meets `docs/PRD.md`, what the live eval measured (section 14) and what was traded away (section 15). Defects found after the build are in `docs/REVIEW.md`; the claims here were corrected against it. The PRD is the contract: it wins any disagreement, and acceptance criteria come only from it, never from here.
 
 ## 1. Principles
 
@@ -61,7 +61,7 @@ evals/
   src/cases.ts          case schema and loader; every problem names its case
   src/metrics.ts        gated and reported metrics. Pure
   src/runner.ts         runEval: validate, seed per case, paced trials, metrics, report
-  drafts/               agent-drafted cases awaiting Nick's review; empty once he moves them
+  drafts/               agent-drafted cases awaiting review; empty once they are moved
   cases/                eval cases (JSON), reviewed. Protected oracle data.
   tests/                vitest, scripted replies on a fake clock, no network
   src/cli.ts            `pnpm eval`: the runner wired to core answer() and getModel()
@@ -72,7 +72,7 @@ infra/                  CDK app (TypeScript), one stack
   cdk.json              model, repository and prefix-list config (context)
   compose.prod.yml      production container definition
   compose.dev.yml       local Postgres
-docs/                   PRD.md, DESIGN.md, WALKTHROUGH.md, chunks/
+docs/                   PRD.md, DESIGN.md, WALKTHROUGH.md, REVIEW.md
 .claude/                settings.json (deny rules)
 .github/workflows/      ci.yml, evals.yml, deploy.yml, oracle-guard.yml
 .github/scripts/        check-answer.sh, the post-deploy check deploy.yml runs
@@ -115,7 +115,7 @@ The eval runner calls the same `answer()`. That is the "one path" rule: whatever
    - **Dropped:** everything else.
 2. **pre-guard** runs the floor lexicons.
    - If an urgent lexicon fires, return the urgent template. **No model call is made:** nothing ranks above urgent, so the model cannot change the outcome.
-   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff, and when the model also proposes a handoff the floor's `sensitive` reason wins, so a sensitive message is never filed into a gap (feature-close F22).
+   - A sensitive floor still calls the model, because the model may propose `urgent` and the final outcome is the higher of the two. The floor guarantees at least a handoff, and when the model also proposes a handoff the floor's `sensitive` reason wins, so a sensitive message is never filed into a gap (review F22).
    - The model's judgment matters for the subtle phrasings; those live in the eval strata built to slip past the lexicons.
 3. **assemble** builds the model input (4.4).
 4. **model** makes one call (4.5). One 15 s deadline on the injected clock covers the call and its retries: a `ThrottlingException` is retried after 500, 1000, 2000 and 4000 ms backoffs while another attempt still fits.
@@ -128,7 +128,7 @@ The lexicons are phrase lists in `floors.ts`, matched case-insensitively on word
 
 - **Urgent:**
   - not breathing, unconscious, not responding, seizure, choking, allergic reaction, epipen, bleeding, hit (his|her|their) head, broke(n) (arm|leg|bone), call 911 (reason `emergency`);
-  - lip(s) ... blue|purple (up to four words between), blue lips, breathing ... slow|shallow|weird|funny (up to three words between), slow|shallow breathing (reason `emergency`; chunk 08, for a calm message about blue lips and slow breathing). "Blue room" and "breathing exercises" do not match;
+  - lip(s) ... blue|purple (up to four words between), blue lips, breathing ... slow|shallow|weird|funny (up to three words between), slow|shallow breathing (reason `emergency`; added in demo hardening for a calm message about blue lips and slow breathing). "Blue room" and "breathing exercises" do not match;
   - can't find (my|our) (son|daughter|child|kid), (child) is missing, missing child;
   - abuse(d), neglect, hurt by, hit (my|our) (child);
   - drunk / intoxicated / high / impaired + pick(ing) up, stranger + pick(ing) up, not on (our) pickup list, trying to take (my|our) (child);
@@ -186,7 +186,7 @@ Because block B embeds dates relative to `now`, the cache key changes daily and 
 - **Tool:** one tool named `reply`, forced with `toolChoice`.
 - **Inference settings:** `temperature: 0`, `maxTokens: 400`.
 - **Timeout:** core's 15 s deadline aborts the call through an `AbortSignal` in the request. The client makes one attempt (`maxAttempts: 1`); core owns retries.
-- **Caching:** a `cachePoint` after block B (shipped in chunk 05).
+- **Caching:** a `cachePoint` after block B.
   - Haiku 4.5 supports Converse `cachePoint` (checked 2026-10-02). The cached prefix must be at least 4,096 tokens; below that the call succeeds and nothing is cached, so the cache point costs nothing when the snapshot is short. `cachedInput` in the usage log shows whether it hits.
 - **No agent framework.** There is one call.
 
@@ -232,7 +232,7 @@ The same applies to minutes, days, weeks, and percent. An impossible 12-hour tim
 
 The set of values from the answer must be a subset of the set from the source. Test this module hardest; it is the signature trust feature.
 
-The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and `app/tests/unit/grounding.test.ts` calls it directly for the forms the review found it misreading. Those tests are the only guard on it, because the metric cannot disagree with the guard (feature-close F2, F17).
+The eval's `grounded` metric reuses this extractor, so a bug here is correlated between the guard and the metric. It is exercised through `ask()` with six accepted and six rejected answers (`app/tests/pipeline/answers.test.ts`), and `app/tests/unit/grounding.test.ts` calls it directly for the forms the review found it misreading. Those tests are the only guard on it, because the metric cannot disagree with the guard (review F2, F17).
 
 ### 4.8 Today card and expectations (`today.ts`)
 
@@ -254,13 +254,13 @@ Filing applies only when the reason is `not_in_source` or `grounding_failed`. Ta
 4. **Pacing.** The account allows 10 model calls a minute, so a burst comes back throttled. Sequential calls, `answer()`'s own throttle retry, and one further 6 s wait and re-run for a question still throttled keep a live replay near that rate: 16 seeded questions in about 96 s, 60 in about 6 minutes (PRD O11).
 5. **The UI** polls `GET /api/replay` (no ID: the sandbox's latest replay) right after publishing and then every second, showing `<completed> of <total>`, and refreshes the page when the replay is done.
 
-This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running` with no process to finish it. Each recorded question stamps `progress_at` with database time, and a `running` row with no progress for 2 minutes reads as failed, so Publish works again. A page that was already following the replay also shows that it failed (feature-close F7). A Reset during a replay stops it after the question in flight: recording progress finds the row gone with its sandbox (F8).
+This works because the app is a long-lived Node process on one box (decision D3). On serverless it would need a queue. A restart mid-replay, which every deploy causes, leaves its row `running` with no process to finish it. Each recorded question stamps `progress_at` with database time, and a `running` row with no progress for 2 minutes reads as failed, so Publish works again. A page that was already following the replay also shows that it failed (review F7). A Reset during a replay stops it after the question in flight: recording progress finds the row gone with its sandbox (F8).
 
 ## 5. Data model (Drizzle, Postgres 16)
 
 Every table except `usage_global` carries `sandbox_id`, and every table holding seeded content keys on `(sandbox_id, id)`: content IDs come from the seed and repeat across sandboxes. All access goes through `src/db/sandbox.ts`: `forSandbox(sandboxId)` returns the only read and write path, and every statement inside it filters on, or inserts, that sandbox ID. No other module imports `pg` or the Drizzle client. Row-level security is designed for, not built (PRD section 12).
 
-Built in chunk 03 (`src/db/schema.ts`, one generated migration). Every `sandbox_id` references `sandboxes.id` on delete cascade.
+The base schema (`src/db/schema.ts`, one generated migration). Every `sandbox_id` references `sandboxes.id` on delete cascade.
 
 | Table | Columns | Primary key |
 |---|---|---|
@@ -272,31 +272,31 @@ Built in chunk 03 (`src/db/schema.ts`, one generated migration). Every `sandbox_
 | `gaps` | sandbox_id, id, label, status | (sandbox_id, id) |
 | `gap_members` | sandbox_id, gap_id, turn_id, with composite foreign keys to `gaps` and `turns` | (sandbox_id, gap_id, turn_id) |
 
-Built in chunk 05 (migration `0001_pipeline_log`):
+Added with the pipeline (migration `0001_pipeline_log`):
 
 | Table | Columns | Primary key |
 |---|---|---|
 | `usage_sandbox` | sandbox_id, bucket (`m:<denver date>:<minute of day>` or `d:<denver date>`), count; incremented with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` | (sandbox_id, bucket) |
 | `usage_global` | day (Denver date), count; one statement reserves a model call only while count is under the cap | day |
 
-Built in chunk 07 (migration `0003_replays`):
+Added with the operator view (migration `0003_replays`):
 
 | Table | Columns | Primary key |
 |---|---|---|
 | `replays` | id (uuid), sandbox_id, snapshot_version, status (`running`, `done`, `failed`), completed, total, results (jsonb: per gap, its label, questions replayed, how many answered, and whether it resolved), created_at, progress_at (database time of the last question finished) | id |
 
-Built in chunk 08 (migration `0004_demo`): `sandboxes.try_this_dismissed_at`, a nullable timestamp set when the visitor dismisses the Try this strip. The strip shows on both views while it is null.
+Added in demo hardening (migration `0004_demo`): `sandboxes.try_this_dismissed_at`, a nullable timestamp set when the visitor dismisses the Try this strip. The strip shows on both views while it is null.
 
-Chunk 07 also gives `gaps.status` a second value, `resolved`, for a gap whose replayed questions were all answered. A question asked after that opens a new gap, because gap filing joins open gaps only.
+The operator view also gives `gaps.status` a second value, `resolved`, for a gap whose replayed questions were all answered. A question asked after that opens a new gap, because gap filing joins open gaps only.
 
-`turns` columns: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for replies the pipeline stored, with IDs `live-<uuid>`). Chunk 05 added the T13 logging fields, nullable because seeded history has none:
+`turns` columns: sandbox_id, id, message, created_at, answer_text, outcome, reason, snapshot_version, citations (jsonb), source (`seed` by default, `live` for replies the pipeline stored, with IDs `live-<uuid>`). The pipeline added the T13 logging fields, nullable because seeded history has none:
 - proposed_outcome, floors_fired (jsonb);
 - language, topic;
 - latency_ms, input_tokens, cached_input_tokens, output_tokens.
 
-Chunk 06 added `sent_to_front_desk` (migration `0002_sent_to_front_desk`): a nullable timestamp, set once by Send to front desk, and only on a `live` reply that is not urgent. Chunk 07's Questions list reads it. `conversation_id` is not built: a conversation lives in the parent's browser and is never stored, so a stored turn belongs to no conversation.
+The parent view added `sent_to_front_desk` (migration `0002_sent_to_front_desk`): a nullable timestamp, set once by Send to front desk, and only on a `live` reply that is not urgent. The operator view's Questions list reads it. `conversation_id` is not built: a conversation lives in the parent's browser and is never stored, so a stored turn belongs to no conversation.
 
-**Sandbox lifecycle (chunk 08).**
+**Sandbox lifecycle.**
 - **Activity.** `forSandbox(id).seen(now)` sets `last_seen_at` and reports whether the sandbox still exists. The proxy calls it for both views, and every API route that reads the cookie calls it first. `/api/ask` creates a new sandbox when it returns false; the other routes answer with their fixed error body.
 - **Idle deletion (PRD D7).** `deleteIdleSandboxes(now)` deletes every sandbox whose `last_seen_at` is more than 7 days before `now`; the cascade deletes the rest of its data. `src/server/idle.ts` runs it once at server start and then every 24 hours, on an injected clock whose sleep is unref'd. A failed run is logged and the next one still runs.
 - **Reset demo (PRD D2).** `POST /api/reset` creates a new sandbox, then deletes the old one with `deleteSandbox(id)`, then sets the cookie. Creating first means a failed delete leaves the browser in its old sandbox; the orphaned new one is collected by the idle deletion.
@@ -333,32 +333,32 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 |---|---|---|
 | `bedrock` (`src/server/bedrock.ts`) | The deployed app, the eval runner, manual local runs (AWS SSO profile) | The real call |
 | `fixture` (`src/server/fixture.ts`) | `MODEL_MODE=fixture`: `pnpm dev`, e2e tests, the fixture eval | Answers every message with a valid `not_in_source` handoff whose topic is the message's first words. A message starting with `fixture:<reason> ` gets a scripted output for that reason instead (`answered`, `grounding_failed`, `not_in_source`, `unsupported_language`, `system_error`), so the e2e tests reach every reason. An unscripted message that a parent-visible section of the snapshot holds word for word is answered from that section, citing it, so publishing a section can make a replay answer. No network, files, or credentials. It exercises the plumbing, not quality |
-| `scripted` | Chunk oracles | Returns exactly the output the test supplies |
+| `scripted` | The frozen integration tests | Returns exactly the output the test supplies |
 
 `getModel()` in `src/server/model.ts` picks `fixture` when `MODEL_MODE=fixture` and `bedrock` otherwise; `MODEL_ID` and the region live there too.
 
-**Rule:** frozen chunk oracles never touch the network. They use `scripted` or `fixture`. Live model behavior is measured by the eval suite, which is a release gate run in CI and attached to chunk review packets. It is not part of any frozen oracle, because nondeterministic oracles flake.
+**Rule:** the frozen test oracles never touch the network. They use `scripted` or `fixture`. Live model behavior is measured by the eval suite, which is a release gate run in CI. It is not part of any frozen oracle, because nondeterministic oracles flake.
 
 ## 7. Evals and tests
 
-- **Test weight.** Each chunk's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth was planned where the logic is ours and complicated: grounding normalization, the floor lexicons and Denver calendar math. As built, grounding and the floors are tested mainly through `ask()`: 12 answers for grounding (`app/tests/pipeline/answers.test.ts`), 19 messages for the floors (`app/tests/pipeline/outcomes.test.ts`) plus the blue-lips route test (`app/tests/demo/floor.test.ts`). Direct tests in `app/tests/unit/grounding.test.ts` and `app/tests/unit/floors.test.ts` cover the forms and phrases the feature-close review found misread; the bare-word non-triggers still have no direct test (F23). No tests that re-verify proven packages.
-- **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of data `read()` returns. `replays` is outside that set; its statements filter on the sandbox ID but no isolation test covers them (feature-close F26). They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
+- **Test weight.** Each milestone's frozen oracle is the integration layer: it drives `ask()`, the route, and real Postgres with a scripted model. Unit-level breadth was planned where the logic is ours and complicated: grounding normalization, the floor lexicons and Denver calendar math. As built, grounding and the floors are tested mainly through `ask()`: 12 answers for grounding (`app/tests/pipeline/answers.test.ts`), 19 messages for the floors (`app/tests/pipeline/outcomes.test.ts`) plus the blue-lips route test (`app/tests/demo/floor.test.ts`). Direct tests in `app/tests/unit/grounding.test.ts` and `app/tests/unit/floors.test.ts` cover the forms and phrases the post-build review found misread; the bare-word non-triggers still have no direct test (F23). No tests that re-verify proven packages.
+- **DB tests.** Cover `src/db/sandbox.ts`: a sandbox reads back as `seed(now)`, and data written in sandbox A is never visible from sandbox B, for every kind of data `read()` returns. `replays` is outside that set; its statements filter on the sandbox ID but no isolation test covers them (review F26). They need `DATABASE_URL`: locally from `infra/compose.dev.yml` (`postgres://frontdesk:frontdesk@localhost:5432/frontdesk`, local-only), in CI from a Postgres service container. With it unset they fail, never skip.
 - **e2e tests (Playwright).** `pnpm test:e2e`, never part of `pnpm test`. They start `next dev` with the fixture model and reach each reason through its `fixture:<reason> ` prefix, read Postgres directly to check what was stored, and run axe on each view state (PRD A1).
 - **Eval runner (`evals/src/runner.ts`).** `runEval` takes the answer function, the grounding check, and the clock as inputs. The frozen tests drive it with scripted replies on a fake clock.
 - **Eval CLI (`evals/src/cli.ts`, `pnpm eval`).** Wires the runner to core `answer()` with `getModel()`, core's `isGrounded`, and the real clock, with no database: each trial's data sections and open gaps come from `seed(case.now)`. Pacing: concurrency 2 and one start every 6,000 ms for Bedrock; concurrency 8 and no interval with `MODEL_MODE=fixture`. Reports go to `evals/reports/` (git-ignored).
   1. Load and Zod-validate the cases (`src/cases.ts`). Any invalid case stops the run before any trial: exit 1, with the case's id printed.
   2. Seed each case once. Its snapshot is the last one `seed(case.now)` publishes.
-  3. Run 3 paced trials per case. Each calls the answer function with the case's message, prior turns, `case.now`, and that snapshot. The trial record it returns carries the gap label, so chunk 05 runs the pure `fileIntoGap()` inside that wiring.
+  3. Run 3 paced trials per case. Each calls the answer function with the case's message, prior turns, `case.now`, and that snapshot. The trial record it returns carries the gap label, so the CLI runs the pure `fileIntoGap()` inside that wiring.
   4. Compute the PRD Q4 and Q5 metrics, overall and per stratum (`src/metrics.ts`).
-  5. Write `report.json` and `summary.md` to the output directory. `report.json` holds `trials`, one entry per trial with its case id, trial number and `failure` (the failure text `answer()` recorded, or null). The summary counts the trials that failed to reach the model and lists their case ids. A validation failure of the model's output is counted there too (chunk 08 plan, R4).
+  5. Write `report.json` and `summary.md` to the output directory. `report.json` holds `trials`, one entry per trial with its case id, trial number and `failure` (the failure text `answer()` recorded, or null). The summary counts the trials that failed to reach the model and lists their case ids. A validation failure of the model's output is counted there too.
   6. Exit 1 if any gated metric is below 1.00.
 
   Concurrency and the minimum interval between trial starts are per-run settings. Every trial is paced, floored ones included, because the runner cannot know which trials call the model until they return. At the current Bedrock quota of 10 requests per minute for Haiku 4.5, the interval is at least 6000 ms.
-- **Case authorship.** An agent drafts each case into `evals/drafts/` from the PRD and Appendix A, before the prompt exists. Nick reviews and edits every draft, then moves it into `evals/cases/` himself. Every case's split is `agent-drafted-author-reviewed`.
+- **Case authorship.** An agent drafts each case into `evals/drafts/` from the PRD and Appendix A, before the prompt exists. The author reviews and edits every draft, then moves it into `evals/cases/` by hand. Every case's split is `agent-drafted-author-reviewed`.
   - From then on, `evals/cases/` is protected (section 10).
-  - **Error analysis:** Nick runs the first live eval locally (`pnpm eval` with the `front-desk` SSO profile) before chunk 05 merges, and its summary goes in the review packet. After the first green run, read every transcript once and type 20 freeform questions. Any new failure class becomes a case through a labeled `oracle-change` PR.
+  - **Error analysis:** the first live eval ran locally (`pnpm eval` with an SSO profile) before the pipeline merged. After the first green run, read every transcript once and type 20 freeform questions. Any new failure class becomes a case through a labeled `oracle-change` PR.
   - A suite at 100% is evidence about these cases only; say so in the write-up.
-  - **Not done** (Nick, 2026-10-04): nobody read every transcript or typed the 20 freeform questions. The report could not have supported the first half anyway: `report.json` keeps each trial's case, number and failure text, not its reply. The findings in section 14 come from the per-stratum metrics and the cases behind them.
+  - **Not done** (as of 2026-10-04): nobody read every transcript or typed the 20 freeform questions. The report could not have supported the first half anyway: `report.json` keeps each trial's case, number and failure text, not its reply. The findings in section 14 come from the per-stratum metrics and the cases behind them.
 
 ## 8. Hosting (CDK, one stack)
 
@@ -368,7 +368,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   - x86 is deliberate: GitHub-hosted runners build amd64 images natively, with no emulation.
   - IMDSv2 only, with a hop limit of 2. Containers on the Docker bridge are one hop further from the metadata service; at the default of 1 the app container gets no role credentials.
   - An Elastic IP, so the CloudFront origin survives an instance stop and start.
-  - The AMI lookup is cached in `infra/cdk.context.json`, which is committed. A later `cdk deploy` therefore never replaces the instance (and the Postgres volume on it) because AWS published a newer AMI. The cost is that the account ID and the default VPC, subnet and AMI IDs sit in the repo.
+  - The AMI lookup is cached in `infra/cdk.context.json`, kept on the deploying machine and git-ignored because it holds the account ID. With the cache in place, a later `cdk deploy` never replaces the instance (and the Postgres volume on it) because AWS published a newer AMI. The cost is that a deploy from a fresh clone would re-run the lookup and could replace the instance.
 - **User data** (runs once, at first boot; later changes to the box go through SSM):
   - installs Docker and the Compose plugin, pinned to v5.6.0 and checked against its published SHA-256 before use;
   - generates the Postgres password with `openssl rand` into `/etc/frontdesk/db.env` (root, mode 600). That secret exists only on the box and never travels.
@@ -392,7 +392,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - **Budget:** an AWS Budgets alert at $25 forecast (PRD S8).
 - **Idle deletion** (PRD D7) runs inside the app process, at server start and every 24 hours (`src/server/idle.ts`, section 5). No cron and no extra AWS service.
 
-**Infra changes are applied by Nick with `cdk deploy` from his laptop (IAM Identity Center credentials).** Agents never deploy. CI deploys only the app image (section 9).
+**Infra changes are applied by hand with `cdk deploy` from a laptop holding IAM Identity Center credentials.** Agents never deploy. CI deploys only the app image (section 9).
 
 ## 9. CI/CD (GitHub Actions)
 
@@ -400,7 +400,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   1. `pnpm install --frozen-lockfile`
   2. gitleaks over full history (pinned binary)
   3. `pnpm test`: the repo tests plus the app, infra, and evals tests
-  4. `playwright install --with-deps chromium`, then `pnpm test:e2e`: the browser tests with axe (chunk 06)
+  4. `playwright install --with-deps chromium`, then `pnpm test:e2e`: the browser tests with axe
   - The `test` job runs a Postgres 16 service container and sets `DATABASE_URL` for it, so `pnpm test` includes the DB tests and the browser tests can read it.
   - There is no lint step and no separate typecheck. `next build`, which type-checks `app` under `strict`, runs inside `pnpm test:e2e` for the production CSP spec. `evals` and `infra` are not type-checked in CI: vitest strips types without checking them.
 - **`evals.yml`** runs on manual dispatch, on push to main, and on pull requests touching `app/src/core/**`, `app/src/server/**`, `app/src/app/api/ask/**`, `evals/**`, or `infra/compose.prod.yml` (`MODEL_ID`).
@@ -413,8 +413,8 @@ Data sections are rendered from `structured` at assemble time. Only sections are
   3. Send one SSM command to the instance tagged `app=front-desk`: write `compose.prod.yml`, ECR login, `docker compose pull`, `docker compose up -d`. Poll the command for up to 5 minutes and fail unless it succeeds.
   4. `curl --fail` `/api/health` through the CDN, with retries; the run fails unless it answers.
   5. `bash .github/scripts/check-answer.sh "$APP_URL"` (PRD Q11): load `/` for a sandbox cookie, then ask "The center is open Monday to Friday." with it, and fail unless the reply is an answer with at least one citation. The ask spends one call from the global daily cap and is never retried; the page load may retry. The whole check gives up within 120 seconds.
-  - It is **not** gated on `ci`. Branch protection and rulesets are unavailable for this private repo on the current GitHub plan, so `deploy.yml` runs in parallel with `ci.yml` and a direct push to main with failing tests would still deploy. The rule instead: push the chunk's feature branch first, and merge it to main only after that branch's `ci` run is green.
-  - It reads four GitHub repository variables (variables, not secrets; there are no secrets): `AWS_DEPLOY_ROLE_ARN`, `AWS_EVAL_ROLE_ARN`, `ECR_REPOSITORY_URI`, `APP_URL`. Each is a stack output.
+  - It is **not** gated on `ci`. The repo was private on a plan without rulesets while it was built, so `deploy.yml` runs in parallel with `ci.yml` and a direct push to main with failing tests would still deploy. The rule instead: push the feature branch first, and merge it to main only after that branch's `ci` run is green. A ruleset requiring a green `ci` on `main` is the obvious next step now that the repo is public.
+  - It reads four GitHub repository variables (variables, not secrets; there are no secrets): `AWS_DEPLOY_ROLE_ARN`, `AWS_EVAL_ROLE_ARN`, `ECR_REPOSITORY_URI`, `APP_URL`. Each is a stack output. The role ARNs and the ECR URI carry the account ID, which AWS does not treat as sensitive, so they stay plain variables and the infra tests keep asserting that no workflow references a stored secret.
 - **`oracle-guard.yml`** fails a PR that touches `evals/cases/**` without the `oracle-change` label (PRD Q9).
 - **Workflow defaults:**
   - `permissions: contents: read` at the top of every workflow; `id-token: write` only on the jobs that assume a role.
@@ -424,7 +424,7 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - **OIDC trust:**
   - `fd-eval` trusts `repo:<owner>/<repo>:pull_request` and `repo:<owner>/<repo>:ref:refs/heads/main`. It can only invoke the model.
   - `fd-deploy` trusts only `repo:<owner>/<repo>:environment:production`. It can push to ECR and send SSM commands to the instance by tag.
-  - GitHub signs this repo's tokens with the **immutable subject**, which names the owner and repository by ID (`repo:nick-railsback@176838666/front-desk@1401949259:...`), and the repo can't switch back to the name form. Each role therefore trusts both forms of each subject. The IDs live in `infra/cdk.json` context (`githubRepoImmutable`). The name form is kept because chunk 02's frozen tests assert it; GitHub no longer sends it, so it is dead weight that can go along with those tests.
+  - GitHub signs this repo's tokens with the **immutable subject**, which names the owner and repository by ID (`repo:nick-railsback@176838666/front-desk@1401949259:...`), and the repo can't switch back to the name form. Each role therefore trusts both forms of each subject. The IDs live in `infra/cdk.json` context (`githubRepoImmutable`). The name form is kept because the infra tests assert it; GitHub no longer sends it, so it is dead weight that can go along with those tests.
 
 ## 10. Security mechanics
 
@@ -432,8 +432,8 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 |---|---|
 | Model API key | None exists. The instance role and the OIDC roles hold short-lived credentials |
 | Local AWS credentials | IAM Identity Center profiles only. No IAM users with access keys. Root has MFA and no keys |
-| Secret scanning | `lefthook` pre-commit runs gitleaks on staged changes; CI runs gitleaks on full history. Don't rely on GitHub's own scanning for a private personal repo |
-| Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook, so the deny rules cover the Edit and Write tools only and a shell command could still write under `evals/cases/`. `oracle-guard.yml` catches that on pull requests, but chunks merge to main without a pull request, so the guard does not fire on chunk work; there Nick's diff review is the check. No frozen oracle's hash pin covers it, because `evals/cases/` is under no chunk's `test_paths`. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. A local env template, if one is added, is named `env.example`, without a leading dot, so the deny rules don't hide it. None exists yet: the only local variable, `DATABASE_URL`, is documented in `infra/compose.dev.yml` |
+| Secret scanning | `lefthook` pre-commit runs gitleaks on staged changes; CI runs gitleaks on full history. GitHub's own scanning is a second line, not the first |
+| Agent hygiene | `.claude/settings.json` denies `Read(./.env)`, `Read(./.env.*)`; `Edit` and `Write` on `./evals/cases/**`; `Bash(cdk deploy:*)` and `Bash(aws ssm send-command:*)`. No hook, so the deny rules cover the Edit and Write tools only and a shell command could still write under `evals/cases/`. `oracle-guard.yml` catches that on pull requests, but milestones merged to main without a pull request, so the guard did not fire on this build; there the author's diff review was the check. Machine-wide secrets (`~/.aws`, `~/.ssh`) are denied in user-level settings, not here. A local env template, if one is added, is named `env.example`, without a leading dot, so the deny rules don't hide it. None exists yet: the only local variable, `DATABASE_URL`, is documented in `infra/compose.dev.yml` |
 | Supply chain | pnpm 11.9.0, which doesn't run dependency install scripts unless allowed in `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 ignores `onlyBuiltDependencies`). `allowBuilds` allows `lefthook` and denies `esbuild` (`esbuild: false`): `drizzle-kit` depends on it, pnpm 11 refuses an install whose build scripts are neither allowed nor denied, and `drizzle-kit generate` works without its install script. `minimumReleaseAge: 1440` in the same file. Lockfile committed. Actions pinned by SHA |
 | Abuse and cost | Rate limits checked in `src/db/sandbox.ts` before any model call (PRD S6); `maxTokens` 400; the global daily cap; the budget alert |
 | Errors | Next.js error boundaries and API routes return generic messages; details go to logs only |
@@ -448,9 +448,9 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 - `zod`, `@aws-sdk/client-bedrock-runtime`, `drizzle-orm`, `drizzle-kit`, `pg`, `date-holidays`;
 - `vitest`, `@playwright/test`, `@axe-core/playwright`, `tsx`;
 - `aws-cdk-lib`, `constructs`, `lefthook`;
-- `aws-cdk` (the CLI, an `infra` dev dependency): how Nick runs `cdk bootstrap` and `cdk deploy` through pnpm, pinned in the lockfile, with no global install;
+- `aws-cdk` (the CLI, an `infra` dev dependency): how `cdk bootstrap` and `cdk deploy` run through pnpm, pinned in the lockfile, with no global install;
 - `@types/react`, `@types/node` (`app` dev dependencies): `next build` type-checks TypeScript and requires them; types only, nothing ships at runtime.
-- `@types/pg` (`app` dev dependency, added in chunk 03): `pg` ships no types and `next build` type-checks `src/db/` under `strict`; types only.
+- `@types/pg` (`app` dev dependency): `pg` ships no types and `next build` type-checks `src/db/` under `strict`; types only.
 - `tailwindcss`, shadcn/ui and `@radix-ui/*` stay allowlisted but unused: the parent view is styled by one plain CSS file, `src/app/globals.css`.
 - `date-holidays` stays allowlisted but unused: the seed computes the center's holidays from fixed-date and nth-weekday rules in `src/seed/calendar.ts`.
 - The gitleaks binary is pinned in CI.
@@ -480,65 +480,65 @@ Data sections are rendered from `structured` at assemble time. Only sections are
 | D9 | Urgent floors short-circuit the model call; sensitive floors do not | Nothing ranks above urgent, so the call cannot change it; a sensitive message can still turn out urgent, which only the model can see | Floors start over-triggering in eval data |
 | D10 | x86 instance | Native amd64 builds on GitHub-hosted runners | Never for the demo |
 
-## 13. Production mapping (for the walkthrough)
+## 13. Production mapping
 
 The prototype's portable artifact is the contract: the reply schema, the outcome ladder, and the eval set. Whatever language the production pipeline is written in has to pass that eval set.
 
-| Concern | In production on the platform |
+| Concern | In production inside a childcare platform |
 |---|---|
-| Pipeline | A module in the main app, with Sidekiq for replay and gap jobs |
+| Pipeline | A module in the main app, with background jobs for replay and gap filing |
 | Database | RDS Postgres with row-level security |
 | Model | Bedrock, same model, same IAM pattern |
 | Identity | Signed platform claims replace the sandbox cookie |
 | Data | Structured data comes through adapters from the platform's calendar, menus, bill plans, and contacts |
 | Handoffs | The platform's messaging; tour requests go to the CRM |
-| Infrastructure | EKS and FluxCD instead of one box |
+| Infrastructure | The platform's Kubernetes and GitOps instead of one box |
 
 ## 14. Results
 
-From the live eval (PRD Q6): [`evals.yml` on `main`](https://github.com/nick-railsback/front-desk/actions/runs/37212986619), Claude Haiku 4.5 on Bedrock, git SHA `b9b7488`, 2026-10-04 15:26 UTC. 64 cases, 3 trials each, 192 trials; no trial failed to reach the model. The run page carries the summary and `report.json`; this section copies the numbers, because `evals/reports/` is git-ignored. The latest run, [`f1b3cce` at 20:31 UTC](https://github.com/nick-railsback/front-desk/actions/runs/37232383698), holds every gated metric at 1.00 with `resolved_when_answerable` 0.48, p50 1.81 s and $0.004 per reply; `SUBMISSION.md` quotes that run.
+From the live eval (PRD Q6): the `evals.yml` run on `main` for commit `f1b3cce`, Claude Haiku 4.5 on Bedrock, 2026-10-04 20:31 UTC. 64 cases, 3 trials each, 192 trials; no trial failed to reach the model. The run's `report.json` is a workflow artifact and `evals/reports/` is git-ignored, so this section copies the numbers.
 
 | Metric | Value | Note |
 |---|---|---|
 | `route_safe`, `grounded`, `schema_valid`, `forbidden_clear` | 1.00 each, in every stratum | Gated (PRD Q4); see what they can't detect below |
-| `resolved_when_answerable` | 0.52 | Target 0.85; missed |
-| `route_exact` | 0.84 | |
-| `citation_hit`, `facts_present` | 0.64, 0.65 | |
+| `resolved_when_answerable` | 0.48 | Target 0.85; missed |
+| `route_exact` | 0.83 | |
+| `citation_hit`, `facts_present` | 0.61, 0.61 | |
 | `gap_match` | 1.00 | |
 | `floor_raised` | 0.00 | The model never proposed below a floor. An urgent floor skips the model, so its false positives never count here |
 | Flicker | 0 cases | No case changed outcome across its trials |
-| Latency p50, p95 | 1.77 s, 2.30 s | Inside PRD N1's 3 s and 8 s targets |
-| Cost per reply | $0.0040 | About $0.76 for the run, under PRD Q10's $2 |
+| Latency p50, p95 | 1.81 s, 2.89 s | Inside PRD N1's 3 s and 8 s targets |
+| Cost per reply | $0.0038 | About $0.73 for the run, under PRD Q10's $2 |
 
-Reported metrics per stratum (the four gated metrics are 1.00 in every stratum; n/a where a stratum has no case the metric applies to):
+Reported metrics per stratum (the four gated metrics are 1.00 in every stratum; n/a where a stratum has no case the metric applies to; the urgent stratum's p50 is 0 because every urgent case is floored before any model call):
 
 | Stratum | `resolved_when_answerable` | `route_exact` | `citation_hit` | `facts_present` | p50 |
 |---|---|---|---|---|---|
-| adversarial | n/a | 1.00 | n/a | n/a | 1.85 s |
-| baseline | 0.57 | 0.57 | 0.57 | 0.57 | 1.88 s |
-| correlation_breaker | 0.33 | 0.60 | 0.33 | 0.33 | 1.51 s |
-| date_time | 0.86 | 1.00 | 1.00 | 0.86 | 1.82 s |
-| gap_filing | n/a | 1.00 | n/a | n/a | 1.45 s |
-| medical_policy | 0.00 | 0.00 | 0.00 | 0.00 | 2.12 s |
-| multi_intent | 1.00 | 1.00 | 1.00 | 1.00 | 1.93 s |
-| non_english | n/a | 1.00 | n/a | 1.00 | 2.00 s |
-| not_in_source | n/a | 1.00 | n/a | n/a | 1.50 s |
-| privacy | n/a | 1.00 | n/a | n/a | 1.51 s |
-| program | 0.75 | 1.00 | 1.00 | 1.00 | 1.83 s |
-| sensitive | n/a | 1.00 | n/a | n/a | 1.61 s |
-| staleness | 0.00 | 1.00 | n/a | n/a | 1.54 s |
-| urgent | n/a | 1.00 | n/a | n/a | 1.48 s |
+| adversarial | n/a | 1.00 | n/a | n/a | 2.06 s |
+| baseline | 0.57 | 0.57 | 0.57 | 0.57 | 2.10 s |
+| correlation_breaker | 0.33 | 0.60 | 0.33 | 0.33 | 1.33 s |
+| date_time | 0.86 | 1.00 | 1.00 | 0.86 | 1.88 s |
+| gap_filing | n/a | 1.00 | n/a | n/a | 1.33 s |
+| medical_policy | 0.00 | 0.00 | 0.00 | 0.00 | 2.30 s |
+| multi_intent | 0.50 | 0.67 | 0.50 | 0.50 | 1.81 s |
+| non_english | n/a | 1.00 | n/a | 1.00 | 2.08 s |
+| not_in_source | n/a | 1.00 | n/a | n/a | 1.34 s |
+| privacy | n/a | 1.00 | n/a | n/a | 1.31 s |
+| program | 0.75 | 1.00 | 1.00 | 1.00 | 2.10 s |
+| sensitive | n/a | 1.00 | n/a | n/a | 1.35 s |
+| staleness | 0.00 | 1.00 | n/a | n/a | 1.39 s |
+| urgent | n/a | 1.00 | n/a | n/a | 0.00 s |
 
 **What the numbers say.**
-- **Safe, not yet useful enough.** Every trial routed at or above its expected outcome, and every value in an answer was in its cited text. The cost is coverage: of the 31 cases that should be answered, 52% of trials were. The figure has stayed in the same band across runs (0.52 at chunk 05, 0.43 at chunk 06, 0.49 during chunk 08, 0.52 now) because the model instructions have not changed since chunk 05; later chunks built the operator loop and the demo.
+- **Safe, not yet useful enough.** Every trial routed at or above its expected outcome, and every value in an answer was in its cited text. The cost is coverage: of the 31 cases that should be answered, 48% of trials were. The figure has stayed in the same band across runs (0.52 when the pipeline landed, 0.43 and 0.49 on later runs, 0.52 before the post-build fixes, 0.48 after them) because the model instructions have not changed since the pipeline landed; later work built the operator loop and the demo. The last drop is `multi_intent`, 1.00 to 0.50, after the urgent floors were widened to catch plain emergencies.
 - **`medical_policy` is the largest miss: 0.00 on every answer metric.** Every symptom question ("She had a 101 temp last night... Can she come in today?") routed above an answer. The likely cause, not confirmed, is a collision in the instructions (`instructions.ts`): "If a child may be hurt, sick, or in danger right now, set outcome to urgent" outranks "For questions about symptoms, give the center's policy." A fix narrows the urgent line to emergencies happening now and is measured against this stratum, which `route_safe` keeps honest: a narrowed line that lets a real emergency through fails the gate.
 - **`staleness` resolves 0.00 with `route_exact` 1.00.** Its three answerable cases (an expired alert, a menu that isn't posted, an alert past its expiry) accept a handoff, and the model always took it rather than saying the alert is over or the menu isn't out.
-- **`correlation_breaker` resolves 0.33.** Trivial questions written in alarm ("EMERGENCY!! When is picture day??") mostly routed above an answer. The calm emergency case (blue lips, slow breathing) routed urgent every trial; since chunk 08 an urgent floor catches it before the model.
+- **`correlation_breaker` resolves 0.33.** Trivial questions written in alarm ("EMERGENCY!! When is picture day??") mostly routed above an answer. The calm emergency case (blue lips, slow breathing) routed urgent every trial; since demo hardening an urgent floor catches it before the model.
 
 **What the numbers don't say.**
-- They are evidence about these 64 cases only. An agent drafted every case from the PRD and Appendix A before the answer prompt existed, and Nick reviewed each one; none is held out from its author.
+- They are evidence about these 64 cases only. An agent drafted every case from the PRD and Appendix A before the answer prompt existed, and the author reviewed each one; none is held out from its author.
 - One center, English only, one model at `temperature: 0`.
-- **The gates can pass a broken run.** A failed model call becomes a `system_error` handoff that the other three gated metrics count as safe, so `schema_valid` counts any trial with a failure as invalid; before that fix an unreachable model scored 1.00 (feature-close F1). `grounded` re-runs the pipeline's own `isGrounded` on the same text and sections, so it can only catch drift between the two (F2). No case trips an urgent floor unless urgent is expected, so floor false positives are invisible to the suite (F4).
+- **The gates can pass a broken run.** A failed model call becomes a `system_error` handoff that the other three gated metrics count as safe, so `schema_valid` counts any trial with a failure as invalid; before that fix an unreachable model scored 1.00 (review F1). `grounded` re-runs the pipeline's own `isGrounded` on the same text and sections, so it can only catch drift between the two (F2). No case trips an urgent floor unless urgent is expected, so floor false positives are invisible to the suite (F4).
 - **The eval reports after the fact.** On `main`, `evals.yml` starts with `deploy.yml` and finishes about 18 minutes after the change is serving; no step rolls back (F9).
 - The report records which trials failed, not each trial's outcome and reason, so every cause above is inferred from the metrics and the cases. Logging the reply per trial is the first change before any instruction tuning.
 
@@ -552,8 +552,8 @@ What the build gave up, and where each is described:
 | The account's Bedrock quota stayed at 10 calls a minute after AWS declined an increase | A replay of the 16 seeded gap questions takes about 96 s; PRD Q10 relaxed to 20 minutes and O11 to 7 minutes; every demo visitor shares the limit | Sections 4.10, 7 |
 | One EC2 instance with Postgres in Docker Compose | No redundancy; a restart mid-replay loses the replay, which reads as failed 2 minutes later | Sections 4.10, 8; D3 |
 | CloudFront reaches the origin over HTTP | Plain HTTP inside AWS for fictional data | Section 8 |
-| The AMI lookup is committed | The account ID and the VPC, subnet and AMI IDs sit in the repo | Section 8 |
+| The AMI lookup cache is git-ignored | A deploy from a fresh clone could replace the instance | Section 8 |
 | `evals.yml` on `main` runs alongside `deploy.yml` | A regression is reported about 18 minutes after it is live, and nothing rolls back | Sections 9, 14 |
-| No branch protection on this GitHub plan | `deploy.yml` is not gated on `ci`; the rule is to merge only after the branch's `ci` is green | Section 9 |
-| Chunks merged to `main` without pull requests | `oracle-guard.yml` never ran on this build's work; the deny rules stop the Edit and Write tools, not a shell, so diff review guarded `evals/cases/` | Section 10 |
+| `deploy.yml` is not gated on `ci` | The rule is to merge only after the branch's `ci` is green | Section 9 |
+| Milestones merged to `main` without pull requests | `oracle-guard.yml` never ran on this build's work; the deny rules stop the Edit and Write tools, not a shell, so diff review guarded `evals/cases/` | Section 10 |
 | Whole snapshot in context, no retrieval | Fine at a few thousand tokens; breaks when a center's content outgrows the context | D2 |

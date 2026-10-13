@@ -137,7 +137,7 @@ describe('outcome ladder', () => {
 });
 
 // PRD 5.2: a sensitive reply is never filed into a gap. At equal rank the
-// model's not_in_source used to win and was filed (feature-close F22).
+// model's not_in_source used to win and was filed (review F22).
 describe('sensitive floor under a not_in_source handoff', () => {
   test(
     'ends with reason sensitive and files nothing into a gap',

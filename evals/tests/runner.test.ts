@@ -219,7 +219,7 @@ describe('gated metrics', () => {
   });
 
   // A failed call becomes a safe system_error handoff that every other gated
-  // metric passes, so an outage would pass the run (feature-close F1).
+  // metric passes, so an outage would pass the run (review F1).
   test('schema_valid drops when a model call failed before returning output', async () => {
     const { report, exitCode } = await runWith(
       'gated-answer',

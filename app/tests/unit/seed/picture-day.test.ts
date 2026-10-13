@@ -1,5 +1,5 @@
 // Picture Day is open, so it never lands on a date the calendar closes
-// (feature-close F16: seeded on 2026-09-06, it fell on Labor Day). Checked
+// (review F16: seeded on 2026-09-06, it fell on Labor Day). Checked
 // for a creation date on every day of a year.
 
 import { expect, test } from 'vitest';

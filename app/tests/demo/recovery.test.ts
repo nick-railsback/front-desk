@@ -1,4 +1,4 @@
-// A browser never gets stuck in a sandbox it cannot leave (feature-close F14).
+// A browser never gets stuck in a sandbox it cannot leave (review F14).
 //
 // malformed cookie: a sandbox cookie that is not valid percent-encoding is
 // treated as no cookie, so a route answers as it does for a missing one
